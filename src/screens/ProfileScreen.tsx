@@ -527,8 +527,8 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   metricCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: colors.panelInk,
+    borderColor: colors.line,
     borderRadius: 8,
     borderWidth: 1,
     flex: 1,
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   metricValue: {
-    color: colors.text,
+    color: colors.offWhite,
     fontFamily: fonts.heading,
     fontSize: 20,
     marginTop: 4,
@@ -555,8 +555,8 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: colors.panelInk,
+    borderColor: colors.line,
     borderRadius: 8,
     borderWidth: 1,
     gap: 10,
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   fieldValue: {
-    color: colors.text,
+    color: colors.offWhite,
     fontFamily: fonts.body,
     fontSize: 15,
     lineHeight: 22,
@@ -583,7 +583,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cardTitle: {
-    color: colors.text,
+    color: colors.offWhite,
     fontFamily: fonts.heading,
     fontSize: 16,
     lineHeight: 22,
@@ -601,7 +601,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   bodyText: {
-    color: colors.text,
+    color: colors.offWhite,
     fontFamily: fonts.body,
     fontSize: 14,
     lineHeight: 21,
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   miniListTitle: {
-    color: colors.text,
+    color: colors.offWhite,
     fontFamily: fonts.heading,
     fontSize: 13,
   },
@@ -630,14 +630,14 @@ const styles = StyleSheet.create({
   },
   chip: {
     backgroundColor: '#F2F5FA',
-    borderColor: colors.border,
+    borderColor: colors.line,
     borderRadius: 8,
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
   chipText: {
-    color: colors.text,
+    color: colors.ink,
     fontFamily: fonts.body,
     fontSize: 13,
   },
