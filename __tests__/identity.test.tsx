@@ -76,7 +76,7 @@ describe('identity liveness foundation', () => {
   });
 
   it('passes liveness only when every challenge step is detected in order', async () => {
-    const detectedSteps = ['center_face', 'turn_left', 'turn_right', 'hold_still'] as const;
+    const detectedSteps = ['center_face', 'turn_left', 'turn_right', 'blink', 'hold_still'] as const;
     let index = 0;
     const detector: LivenessDetectionAdapter = {
       name: 'test-detector',
@@ -90,6 +90,7 @@ describe('identity liveness foundation', () => {
 
     controller.setCameraReady();
     controller.start();
+    expect((await controller.analyzeCurrentStep()).status).toBe('challenge_active');
     expect((await controller.analyzeCurrentStep()).status).toBe('challenge_active');
     expect((await controller.analyzeCurrentStep()).status).toBe('challenge_active');
     expect((await controller.analyzeCurrentStep()).status).toBe('challenge_active');
@@ -122,4 +123,3 @@ describe('identity liveness foundation', () => {
     expect(screen.getByText('Native device required')).toBeTruthy();
   });
 });
-

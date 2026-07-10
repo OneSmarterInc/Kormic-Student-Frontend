@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
-import { Camera, useCameraDevice } from 'react-native-vision-camera';
+import { AppState, Platform, StyleSheet, Text, View } from 'react-native';
+import { useCameraDevice } from 'react-native-vision-camera';
+import { Camera as FaceDetectorCamera, Face } from 'react-native-vision-camera-face-detector';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import {
@@ -8,6 +9,7 @@ import {
   IDENTITY_DEMO_MODE,
   LivenessChallengeController,
   LivenessControllerState,
+  MlKitLivenessAdapter,
   authenticateWithDeviceBiometrics,
   getCameraPermissionState,
   requestCameraPermission,
@@ -40,15 +42,38 @@ function biometricStatusFromResult(result: BiometricAuthenticationResult): Onboa
 
 export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenProps) {
   const frontDevice = useCameraDevice('front');
-  const controllerRef = useRef(new LivenessChallengeController());
+  const adapterRef = useRef(new MlKitLivenessAdapter());
+  const controllerRef = useRef(new LivenessChallengeController(adapterRef.current));
   const [controllerState, setControllerState] = useState<LivenessControllerState>(() => controllerRef.current.getState());
+  const controllerStateRef = useRef(controllerState);
   const [localLivenessStatus, setLocalLivenessStatus] = useState(state.livenessStatus);
+  const localStatusRef = useRef(state.livenessStatus);
   const [message, setMessage] = useState<string | undefined>(() => getCameraPermissionState().reason);
   const [cameraError, setCameraError] = useState<string | undefined>();
+  const analyzingRef = useRef(false);
+  const lastAnalyzedAtRef = useRef(0);
 
   useEffect(() => {
     setLocalLivenessStatus(state.livenessStatus);
+    localStatusRef.current = state.livenessStatus;
   }, [state.livenessStatus]);
+
+  useEffect(() => {
+    controllerStateRef.current = controllerState;
+  }, [controllerState]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active' && localStatusRef.current === 'challenge_active') {
+        const next = controllerRef.current.fail('Camera interrupted. Please try again.');
+        setControllerState(next);
+        setMessage(next.failureReason);
+        setLivenessStatus(next.status);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const currentStep = useMemo(
     () => controllerState.steps[controllerState.currentStepIndex] ?? controllerState.steps[0]!,
@@ -56,8 +81,15 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
   );
 
   const setLivenessStatus = (status: OnboardingState['livenessStatus']) => {
+    localStatusRef.current = status;
     setLocalLivenessStatus(status);
     dispatch({ type: 'SET_LIVENESS', status });
+  };
+
+  const applyControllerState = (nextState: LivenessControllerState) => {
+    setControllerState(nextState);
+    setLivenessStatus(nextState.status);
+    setMessage(nextState.failureReason ?? nextState.guidance);
   };
 
   const requestPermission = async () => {
@@ -73,8 +105,7 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
         return;
       }
 
-      setControllerState(controllerRef.current.setCameraReady());
-      setLivenessStatus('camera_ready');
+      applyControllerState(controllerRef.current.setCameraReady());
       return;
     }
 
@@ -89,22 +120,38 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
       return;
     }
 
-    setControllerState(controllerRef.current.start());
-    setLivenessStatus('challenge_active');
+    applyControllerState(controllerRef.current.start());
   };
 
-  const analyzeStep = async () => {
-    const nextState = await controllerRef.current.analyzeCurrentStep();
-    setControllerState(nextState);
-    setLivenessStatus(nextState.status);
-    setMessage(nextState.failureReason);
+  const analyzeDetectedFaces = async (faces: Face[]) => {
+    if (localStatusRef.current !== 'challenge_active') {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastAnalyzedAtRef.current < 160 || analyzingRef.current) {
+      return;
+    }
+
+    lastAnalyzedAtRef.current = now;
+    analyzingRef.current = true;
+
+    try {
+      // The liveness module consumes normalized geometry only. It does not persist raw frames, photos, or video.
+      adapterRef.current.ingestFaces(faces, now);
+      const nextState = await controllerRef.current.analyzeCurrentStep();
+      applyControllerState(nextState);
+    } catch (error) {
+      applyControllerState(
+        controllerRef.current.fail(error instanceof Error ? error.message : 'Face detection could not continue.'),
+      );
+    } finally {
+      analyzingRef.current = false;
+    }
   };
 
   const completeDemoStep = () => {
-    const nextState = controllerRef.current.completeCurrentStepForDevelopment();
-    setControllerState(nextState);
-    setLivenessStatus(nextState.status);
-    setMessage(nextState.failureReason);
+    applyControllerState(controllerRef.current.completeCurrentStepForDevelopment());
   };
 
   const retry = () => {
@@ -113,6 +160,8 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
     setMessage(undefined);
     setCameraError(undefined);
     setLivenessStatus('not_started');
+    analyzingRef.current = false;
+    lastAnalyzedAtRef.current = 0;
   };
 
   const setupBiometrics = async () => {
@@ -129,9 +178,18 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
   };
 
   const isWeb = Platform.OS === 'web';
-  const hasPermission = localLivenessStatus === 'camera_ready' || localLivenessStatus === 'challenge_active' || localLivenessStatus === 'passed';
+  const hasPermission =
+    localLivenessStatus === 'camera_ready' ||
+    localLivenessStatus === 'challenge_active' ||
+    localLivenessStatus === 'passed';
   const canShowCamera = !isWeb && hasPermission && frontDevice && localLivenessStatus !== 'passed';
-  const isTerminalError = localLivenessStatus === 'permission_denied' || localLivenessStatus === 'failed' || localLivenessStatus === 'unavailable';
+  const isTerminalError =
+    localLivenessStatus === 'permission_denied' ||
+    localLivenessStatus === 'failed' ||
+    localLivenessStatus === 'unavailable';
+  const progressLabel = localLivenessStatus === 'challenge_active'
+    ? `Step ${controllerState.currentStepIndex + 1} of ${controllerState.steps.length}`
+    : undefined;
 
   const renderCameraArea = () => {
     if (isWeb) {
@@ -146,10 +204,17 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
     if (canShowCamera && frontDevice) {
       return (
         <View style={styles.cameraFrame}>
-          <Camera
+          <FaceDetectorCamera
             style={StyleSheet.absoluteFill}
             device={frontDevice}
             isActive={localLivenessStatus === 'camera_ready' || localLivenessStatus === 'challenge_active'}
+            cameraFacing="front"
+            outputResolution="preview"
+            performanceMode="fast"
+            runClassifications
+            minFaceSize={0.15}
+            trackingEnabled
+            onFacesDetected={analyzeDetectedFaces}
             onError={(error) => {
               const errorMessage = error.message || 'Camera preview could not start.';
               setCameraError(errorMessage);
@@ -165,7 +230,7 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
     if (localLivenessStatus === 'passed') {
       return (
         <View style={styles.successFrame}>
-          <Text style={styles.successMark}>OK</Text>
+          <Text style={styles.successMark}>LIVE</Text>
         </View>
       );
     }
@@ -202,7 +267,7 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
       return 'A live person was present for onboarding. You can optionally secure this device next.';
     }
     if (localLivenessStatus === 'challenge_active') {
-      return 'Follow each prompt. This build is ready for a future face-pose detection adapter and does not auto-pass.';
+      return message ?? controllerState.guidance ?? 'Follow the prompt shown here.';
     }
     if (isTerminalError) {
       return message ?? cameraError ?? 'The camera check could not continue.';
@@ -230,12 +295,9 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
     }
 
     if (localLivenessStatus === 'challenge_active') {
-      return (
-        <>
-          <PrimaryButton label="Check current prompt" onPress={analyzeStep} />
-          {IDENTITY_DEMO_MODE ? <PrimaryButton label="Complete prompt in demo mode" onPress={completeDemoStep} variant="secondary" /> : null}
-        </>
-      );
+      return IDENTITY_DEMO_MODE ? (
+        <PrimaryButton label="Complete prompt in demo mode" onPress={completeDemoStep} variant="secondary" />
+      ) : null;
     }
 
     if (isTerminalError) {
@@ -255,6 +317,7 @@ export function LivenessScreen({ state, dispatch, onContinue }: LivenessScreenPr
     <ScreenShell scroll={false} footer={footer}>
       <View style={styles.content}>
         {renderCameraArea()}
+        {progressLabel ? <Text style={styles.progress}>{progressLabel}</Text> : null}
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.subhead}>{subtitle}</Text>
         {localLivenessStatus === 'passed' ? (
@@ -286,7 +349,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: colors.connectionBlue,
     backgroundColor: colors.panelInk,
-    marginBottom: 22,
+    marginBottom: 18,
   },
   faceGuide: {
     position: 'absolute',
@@ -325,9 +388,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   successFrame: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
+    width: 92,
+    height: 92,
+    borderRadius: 46,
     borderWidth: 2,
     borderColor: colors.coral,
     backgroundColor: 'rgba(255,107,74,0.15)',
@@ -338,7 +401,14 @@ const styles = StyleSheet.create({
   successMark: {
     color: colors.coral,
     fontFamily: fonts.bodyMedium,
-    fontSize: 34,
+    fontSize: 18,
+    letterSpacing: 0,
+  },
+  progress: {
+    color: colors.muted,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    marginBottom: 8,
   },
   title: {
     ...type.title,
@@ -376,6 +446,3 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
-
-
-

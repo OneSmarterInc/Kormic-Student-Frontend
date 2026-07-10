@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
+
 jest.mock('react-native-vision-camera', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -25,3 +26,16 @@ jest.mock('expo-local-authentication', () => ({
   authenticateAsync: jest.fn(async () => ({ success: true })),
 }));
 
+
+
+
+
+jest.mock('react-native-vision-camera-face-detector', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    Camera: (props: Record<string, unknown>) =>
+      React.createElement(View, { ...props, testID: 'vision-camera-face-detector-preview' }),
+  };
+});
