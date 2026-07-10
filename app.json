@@ -16,17 +16,12 @@
     },
     "android": {
       "package": "com.kormic.student",
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "plugins": [
       "expo-font",
-      [
-        "react-native-vision-camera",
-        {
-          "cameraPermissionText": "Kormic uses the camera to confirm that a live person is present during student onboarding.",
-          "enableMicrophonePermission": false
-        }
-      ],
       [
         "expo-local-authentication",
         {
