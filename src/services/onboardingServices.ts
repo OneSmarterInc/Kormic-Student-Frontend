@@ -1,9 +1,5 @@
 import { LinkedInScreenshot, SelectedCvFile } from '../models/onboarding';
 
-export interface LivenessService {
-  startCheck(): Promise<'success' | 'retry'>;
-}
-
 export interface GitHubService {
   connect(): Promise<{ handle: string }>;
 }
@@ -21,7 +17,6 @@ export interface BuildAgentService {
 }
 
 export interface OnboardingServices {
-  liveness: LivenessService;
   github: GitHubService;
   linkedin: LinkedInService;
   cv: CvService;
@@ -31,12 +26,6 @@ export interface OnboardingServices {
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const mockOnboardingServices: OnboardingServices = {
-  liveness: {
-    async startCheck() {
-      await wait(900);
-      return 'success';
-    },
-  },
   github: {
     async connect() {
       await wait(900);

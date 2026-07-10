@@ -15,7 +15,7 @@ import { WelcomeScreen } from './screens/WelcomeScreen';
 import { mockOnboardingServices } from './services/onboardingServices';
 import { onboardingReducer } from './state/onboardingReducer';
 import { colors } from './theme/tokens';
-import TotpScreen from './screens/TotpScreen';
+import { LivenessScreen } from './screens/LivenessScreen';
 
 export default function App() {
   const [frauncesLoaded] = useFraunces({
@@ -37,10 +37,6 @@ export default function App() {
     }
   }, [state]);
   const completeBuild = useCallback(() => navigate('AgentLive'), [navigate]);
-  const completeTotp = useCallback(() => {
-    dispatch({ type: 'SET_LIVENESS', status: 'success' });
-    navigate('GitHub');
-  }, [navigate]);
 
   if (!frauncesLoaded || !interLoaded) {
     return (
@@ -57,7 +53,7 @@ export default function App() {
       case 'BasicInfo':
         return <BasicInfoScreen state={state} dispatch={dispatch} onContinue={next} />;
       case 'Liveness':
-        return <TotpScreen onContinue={completeTotp} />;
+        return <LivenessScreen state={state} dispatch={dispatch} onContinue={next} />;
       case 'GitHub':
         return <GitHubScreen state={state} services={services} dispatch={dispatch} onContinue={next} />;
       case 'LinkedIn':
@@ -99,3 +95,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ink,
   },
 });
+

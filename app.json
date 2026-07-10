@@ -8,13 +8,31 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.kormic.student"
+      "bundleIdentifier": "com.kormic.student",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Kormic uses the camera to confirm that a live person is present during student onboarding.",
+        "NSFaceIDUsageDescription": "Kormic uses device biometrics to help secure access to your student profile on this device."
+      }
     },
     "android": {
-      "package": "com.kormic.student"
+      "package": "com.kormic.student",
+      "permissions": ["android.permission.CAMERA"]
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Kormic uses the camera to confirm that a live person is present during student onboarding.",
+          "enableMicrophonePermission": false
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Kormic uses device biometrics to help secure access to your student profile on this device."
+        }
+      ]
     ]
   }
 }

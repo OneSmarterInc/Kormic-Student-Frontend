@@ -40,7 +40,7 @@ export function canAdvanceFrom(route: OnboardingRoute, state: OnboardingState): 
     case 'BasicInfo':
       return isBasicInfoComplete(state.basicInfo);
     case 'Liveness':
-      return state.livenessStatus === 'success';
+      return state.livenessStatus === 'passed';
     case 'GitHub':
       return state.githubStatus === 'connected' || state.githubStatus === 'skipped';
     case 'LinkedIn':
@@ -64,3 +64,4 @@ export function missingRecommendedSources(state: OnboardingState): string[] {
   }
   return missing;
 }
+
