@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useCameraDevice, VisionCamera } from 'react-native-vision-camera';
 import {
@@ -59,11 +59,13 @@ describe('identity liveness foundation', () => {
     const dispatch = jest.fn();
     const screen = render(<LivenessScreen state={initialOnboardingState} dispatch={dispatch} onContinue={jest.fn()} />);
 
-    fireEvent.press(screen.getByText('Allow camera'));
-
-    await waitFor(() => {
-      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_LIVENESS', status: 'unavailable' });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Allow camera'));
+      await Promise.resolve();
+      await Promise.resolve();
     });
+
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_LIVENESS', status: 'unavailable' });
     expect(screen.getByText('No front camera was found on this device.')).toBeTruthy();
   });
 
