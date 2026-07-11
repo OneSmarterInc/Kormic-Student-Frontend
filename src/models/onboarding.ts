@@ -1,3 +1,5 @@
+import { BiometricStatus, LivenessStatus } from '../identity';
+
 export type OnboardingRoute =
   | 'Welcome'
   | 'BasicInfo'
@@ -11,8 +13,6 @@ export type OnboardingRoute =
 export type Interest = 'Study abroad' | 'Internship' | 'Job' | 'Not sure yet';
 
 export type RecommendedSourceState = 'not_started' | 'connected' | 'uploaded' | 'skipped';
-
-export type LivenessStatus = 'intro' | 'capturing' | 'success' | 'retry';
 
 export type GitHubStatus = 'not_started' | 'connecting' | 'connected' | 'error' | 'skipped';
 
@@ -49,6 +49,7 @@ export interface OnboardingState {
   route: OnboardingRoute;
   basicInfo: BasicInfo;
   livenessStatus: LivenessStatus;
+  biometricStatus: BiometricStatus;
   githubStatus: GitHubStatus;
   githubHandle?: string;
   linkedinStatus: LinkedInStatus;
@@ -95,7 +96,8 @@ export const initialBasicInfo: BasicInfo = {
 export const initialOnboardingState: OnboardingState = {
   route: 'Welcome',
   basicInfo: initialBasicInfo,
-  livenessStatus: 'intro',
+  livenessStatus: 'not_started',
+  biometricStatus: 'not_started',
   githubStatus: 'not_started',
   linkedinStatus: 'not_started',
   linkedinScreenshots: [],

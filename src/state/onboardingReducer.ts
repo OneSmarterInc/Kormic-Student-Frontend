@@ -16,6 +16,7 @@ export type OnboardingAction =
   | { type: 'UPDATE_BASIC_INFO'; field: BasicInfoField; value: string }
   | { type: 'TOGGLE_INTEREST'; interest: Interest }
   | { type: 'SET_LIVENESS'; status: OnboardingState['livenessStatus'] }
+  | { type: 'SET_BIOMETRIC'; status: OnboardingState['biometricStatus'] }
   | { type: 'SET_GITHUB_CONNECTING' }
   | { type: 'SET_GITHUB_CONNECTED'; handle: string }
   | { type: 'SET_GITHUB_ERROR' }
@@ -71,6 +72,8 @@ export function onboardingReducer(
     }
     case 'SET_LIVENESS':
       return { ...state, livenessStatus: action.status };
+    case 'SET_BIOMETRIC':
+      return { ...state, biometricStatus: action.status };
     case 'SET_GITHUB_CONNECTING':
       return { ...state, githubStatus: 'connecting' };
     case 'SET_GITHUB_CONNECTED':
@@ -110,3 +113,4 @@ export function onboardingReducer(
       return { ...state, buildStage: action.stage };
   }
 }
+

@@ -1,5 +1,5 @@
 import { initialOnboardingState, OnboardingState } from '../src/models/onboarding';
-import { canAdvanceFrom, getProgress, missingRecommendedSources } from '../src/navigation/routes';
+import { canAdvanceFrom, missingRecommendedSources } from '../src/navigation/routes';
 import { onboardingReducer } from '../src/state/onboardingReducer';
 import { durationForMotion } from '../src/utils/motion';
 import { isBasicInfoComplete, validateBasicInfo } from '../src/utils/validation';
@@ -62,12 +62,12 @@ describe('onboarding validation and gates', () => {
     expect(canAdvanceFrom('BasicInfo', state)).toBe(true);
   });
 
-  it('prevents liveness forward navigation before simulated success', () => {
-    const capturing = onboardingReducer(initialOnboardingState, { type: 'SET_LIVENESS', status: 'capturing' });
-    const success = onboardingReducer(capturing, { type: 'SET_LIVENESS', status: 'success' });
+  it('prevents liveness forward navigation before a passed challenge', () => {
+    const active = onboardingReducer(initialOnboardingState, { type: 'SET_LIVENESS', status: 'challenge_active' });
+    const passed = onboardingReducer(active, { type: 'SET_LIVENESS', status: 'passed' });
 
-    expect(canAdvanceFrom('Liveness', capturing)).toBe(false);
-    expect(canAdvanceFrom('Liveness', success)).toBe(true);
+    expect(canAdvanceFrom('Liveness', active)).toBe(false);
+    expect(canAdvanceFrom('Liveness', passed)).toBe(true);
   });
 
   it('preserves state when moving backward', () => {
@@ -118,7 +118,7 @@ describe('onboarding validation and gates', () => {
 
     state = completeBasicInfo(state);
     state = onboardingReducer(state, { type: 'NEXT' });
-    state = onboardingReducer(state, { type: 'SET_LIVENESS', status: 'success' });
+    state = onboardingReducer(state, { type: 'SET_LIVENESS', status: 'passed' });
     state = onboardingReducer(state, { type: 'NEXT' });
     state = onboardingReducer(state, { type: 'SET_GITHUB_CONNECTED', handle: '@priya' });
     state = onboardingReducer(state, { type: 'NEXT' });
@@ -143,3 +143,5 @@ describe('onboarding validation and gates', () => {
     expect(durationForMotion(850, false)).toBe(850);
   });
 });
+
+
