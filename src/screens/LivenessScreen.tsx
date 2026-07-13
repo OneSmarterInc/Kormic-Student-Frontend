@@ -83,6 +83,7 @@ export function LivenessScreen({ state, services, dispatch, onContinue }: Livene
         label={state.livenessStatus === 'retry' ? 'Try again' : 'Start check'}
         onPress={start}
         disabled={state.livenessStatus === 'capturing'}
+        loading={state.livenessStatus === 'capturing'}
       />
     );
 

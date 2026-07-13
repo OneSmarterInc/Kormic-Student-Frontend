@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
+import { TextField } from '../components/TextField';
 import { OnboardingState } from '../models/onboarding';
 import { OnboardingServices } from '../services/onboardingServices';
 import { OnboardingAction } from '../state/onboardingReducer';
@@ -17,14 +18,24 @@ interface GitHubScreenProps {
 
 export function GitHubScreen({ state, services, dispatch, onContinue }: GitHubScreenProps) {
   const [skipVisible, setSkipVisible] = useState(false);
+  const [githubUrl, setGithubUrl] = useState('');
+  const [error, setError] = useState('');
 
   const connect = async () => {
     setSkipVisible(false);
+    setError('');
+    const trimmedUrl = githubUrl.trim();
+    if (!trimmedUrl) {
+      setError('Enter your GitHub profile URL');
+      return;
+    }
+
     dispatch({ type: 'SET_GITHUB_CONNECTING' });
     try {
-      const result = await services.github.connect();
+      const result = await services.github.connect(state.authSession, trimmedUrl);
       dispatch({ type: 'SET_GITHUB_CONNECTED', handle: result.handle });
-    } catch {
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : 'That did not connect. Try again.');
       dispatch({ type: 'SET_GITHUB_ERROR' });
     }
   };
@@ -44,9 +55,10 @@ export function GitHubScreen({ state, services, dispatch, onContinue }: GitHubSc
         <>
           <PrimaryButton
   		testID="connect-github-button"
-  		label={connected ? 'Continue' : state.githubStatus === 'connecting' ? 'Connecting' : 'Connect GitHub'}
+  		label={connected ? 'Continue' : 'Connect GitHub'}
             onPress={connected ? onContinue : connect}
             disabled={state.githubStatus === 'connecting'}
+            loading={state.githubStatus === 'connecting'}
           />
           <PrimaryButton label="Skip for now" onPress={() => setSkipVisible(true)} variant="secondary" />
         </>
@@ -60,12 +72,25 @@ export function GitHubScreen({ state, services, dispatch, onContinue }: GitHubSc
         <Text style={styles.subhead}>
           Your real projects and code are the strongest part of your profile, so we verify them directly.
         </Text>
+        {!connected ? (
+          <TextField
+            label="GitHub profile URL"
+            value={githubUrl}
+            onChangeText={(value) => {
+              setError('');
+              setGithubUrl(value);
+            }}
+            autoCapitalize="none"
+            keyboardType="url"
+            placeholder="https://github.com/kormic-student"
+          />
+        ) : null}
         {connected ? (
           <View style={styles.card}>
-            <Text style={styles.cardText}>Connected as {state.githubHandle}</Text>
+            <Text style={styles.cardText}>Connected: {state.githubHandle}</Text>
           </View>
         ) : null}
-        {state.githubStatus === 'error' ? <Text style={styles.error}>That did not connect. Try again.</Text> : null}
+        {state.githubStatus === 'error' || error ? <Text style={styles.error}>{error || 'That did not connect. Try again.'}</Text> : null}
         <Text style={styles.consequence}>
           You can continue, but your agent may have less verified information to work with.
         </Text>
@@ -76,6 +101,7 @@ export function GitHubScreen({ state, services, dispatch, onContinue }: GitHubSc
         message="Without GitHub, your agent may not be able to verify your projects, code, and technical work. You can add it later, but your profile will remain incomplete until you do."
         primaryLabel="Connect GitHub"
         secondaryLabel="Skip anyway"
+        primaryLoading={state.githubStatus === 'connecting'}
         onPrimary={connect}
         onSecondary={skip}
         onRequestClose={() => setSkipVisible(false)}

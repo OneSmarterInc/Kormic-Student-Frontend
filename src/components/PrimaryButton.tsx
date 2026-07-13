@@ -1,11 +1,12 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
 import { colors, fonts, radii } from '../theme/tokens';
 
 interface ButtonProps {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
   variant?: 'primary' | 'secondary';
   accessibilityLabel?: string;
   style?: ViewStyle;
@@ -16,6 +17,7 @@ export function PrimaryButton({
   label,
   onPress,
   disabled,
+  loading = false,
   variant = 'primary',
   accessibilityLabel,
   style,
@@ -26,18 +28,22 @@ export function PrimaryButton({
     testID={testID}
     accessibilityRole="button"
     accessibilityLabel={accessibilityLabel ?? label}
-    accessibilityState={{ disabled }}
-    disabled={disabled}
+    accessibilityState={{ disabled: disabled || loading, busy: loading }}
+    disabled={disabled || loading}
     onPress={onPress}
     style={({ pressed }) => [
       styles.button,
       variant === 'secondary' ? styles.secondary : styles.primary,
-      disabled && styles.disabled,
-      pressed && !disabled && styles.pressed,
+      (disabled || loading) && styles.disabled,
+      pressed && !disabled && !loading && styles.pressed,
       style,
     ]}
   >
-    <Text style={[styles.label, variant === 'secondary' && styles.secondaryLabel]}>{label}</Text>
+    {loading ? (
+      <ActivityIndicator color={variant === 'secondary' ? colors.offWhite : '#1A0F0A'} />
+    ) : (
+      <Text style={[styles.label, variant === 'secondary' && styles.secondaryLabel]}>{label}</Text>
+    )}
   </Pressable>
 );
 }

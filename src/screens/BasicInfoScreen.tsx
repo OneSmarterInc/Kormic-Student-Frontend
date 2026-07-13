@@ -5,10 +5,9 @@ import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
 import { TextField } from '../components/TextField';
 import { BasicInfoField, OnboardingState } from '../models/onboarding';
+import { registerStudent } from '../services/api';
 import { OnboardingAction } from '../state/onboardingReducer';
 import { colors, fonts, type } from '../theme/tokens';
-
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
 interface BasicInfoScreenProps {
   state: OnboardingState;
@@ -16,12 +15,11 @@ interface BasicInfoScreenProps {
   onContinue: () => void;
 }
 
-type RegisterErrors = Partial<Record<'fullName' | 'email' | 'password' | 'studentId' | 'api', string>>;
+type RegisterErrors = Partial<Record<'fullName' | 'email' | 'password' | 'api', string>>;
 
 export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreenProps) {
   const [submitted, setSubmitted] = useState(false);
   const [password, setPassword] = useState('');
-  const [studentId, setStudentId] = useState('');
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
@@ -42,16 +40,12 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
       nextErrors.password = 'Password is required';
     }
 
-    if (!studentId.trim()) {
-      nextErrors.studentId = 'Student ID is required';
-    }
-
     if (apiError) {
       nextErrors.api = apiError;
     }
 
     return nextErrors;
-  }, [apiError, password, state.basicInfo.email, state.basicInfo.fullName, studentId]);
+  }, [apiError, password, state.basicInfo.email, state.basicInfo.fullName]);
 
   const canContinue = Object.keys(errors).filter((key) => key !== 'api').length === 0 && !loading;
 
@@ -71,31 +65,27 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
     const payload = {
       email: state.basicInfo.email.trim(),
       password,
-      role: 'student',
       name: state.basicInfo.fullName.trim(),
-      student_id: studentId.trim(),
     };
-
-     console.log('Register payload:', payload);
-     onContinue();
 
     try {
       setLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/auth/register/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      const data = await registerStudent(payload);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.message || data?.detail || 'Unable to create account');
+      if (!data.access || !data.user) {
+        throw new Error('Registration succeeded, but the server did not return an auth session.');
       }
 
+      dispatch({
+        type: 'SET_AUTH_SESSION',
+        session: {
+          access: data.access,
+          refresh: data.refresh,
+          user: data.user,
+          mustEnrollTotp: Boolean(data.must_enroll_totp),
+        },
+      });
       onContinue();
     } catch (error) {
       setApiError(error instanceof Error ? error.message : 'Unable to create account');
@@ -107,7 +97,7 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
   const shownErrors = submitted ? errors : {};
 
   return (
-    <ScreenShell footer={<PrimaryButton label={loading ? 'Creating account...' : 'Continue'} onPress={submit} disabled={!canContinue} />}>
+    <ScreenShell footer={<PrimaryButton label="Continue" onPress={submit} disabled={!canContinue} loading={loading} />}>
       <Text style={styles.title}>Tell us who you are</Text>
       <Text style={styles.subhead}>A few details help your agent understand your background and what you want next.</Text>
 
@@ -123,13 +113,6 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
           error={shownErrors.email}
         />
         <TextField label="Password" value={password} onChangeText={setPassword} secureTextEntry error={shownErrors.password} />
-        <TextField
-          label="Student ID"
-          value={studentId}
-          onChangeText={setStudentId}
-          autoCapitalize="none"
-          error={shownErrors.studentId}
-        />
         {shownErrors.api ? <Text style={styles.errorText}>{shownErrors.api}</Text> : null}
 
 

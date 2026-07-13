@@ -4,6 +4,7 @@ import { isBasicInfoComplete } from '../utils/validation';
 
 export const routeTitles: Record<OnboardingRoute, string> = {
   Welcome: 'Welcome',
+  Login: 'Login',
   BasicInfo: 'Basic information',
   Liveness: 'Liveness',
   GitHub: 'GitHub',
@@ -11,9 +12,17 @@ export const routeTitles: Record<OnboardingRoute, string> = {
   CV: 'CV',
   BuildingAgent: 'Building',
   AgentLive: 'Agent live',
+  Profile: 'Profile',
 };
 
 export function getPreviousRoute(route: OnboardingRoute): OnboardingRoute | undefined {
+  if (route === 'Login') {
+    return 'Welcome';
+  }
+  if (route === 'Profile') {
+    return 'AgentLive';
+  }
+
   const index = orderedRoutes.indexOf(route);
   return index > 0 ? orderedRoutes[index - 1] : undefined;
 }
@@ -37,6 +46,8 @@ export function canAdvanceFrom(route: OnboardingRoute, state: OnboardingState): 
   switch (route) {
     case 'Welcome':
       return true;
+    case 'Login':
+      return Boolean(state.authSession);
     case 'BasicInfo':
       return isBasicInfoComplete(state.basicInfo);
     case 'Liveness':
@@ -50,6 +61,8 @@ export function canAdvanceFrom(route: OnboardingRoute, state: OnboardingState): 
     case 'BuildingAgent':
       return true;
     case 'AgentLive':
+      return false;
+    case 'Profile':
       return false;
   }
 }

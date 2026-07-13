@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ConfirmModal } from '../components/ConfirmModal';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import { OnboardingState } from '../models/onboarding';
@@ -16,17 +15,26 @@ interface LinkedInScreenProps {
 }
 
 export function LinkedInScreen({ state, services, dispatch, onContinue }: LinkedInScreenProps) {
-  const [skipVisible, setSkipVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const add = async () => {
-    setSkipVisible(false);
-    const screenshots = await services.linkedin.pickScreenshots(state.linkedinScreenshots.length);
-    screenshots.forEach((screenshot) => dispatch({ type: 'ADD_LINKEDIN_SCREENSHOT', screenshot }));
+    setError('');
+
+    try {
+      setLoading(true);
+      const screenshots = await services.linkedin.pickScreenshots(state.linkedinScreenshots.length);
+      await services.linkedin.upload(state.authSession, [...state.linkedinScreenshots, ...screenshots]);
+      screenshots.forEach((screenshot) => dispatch({ type: 'ADD_LINKEDIN_SCREENSHOT', screenshot }));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Unable to upload LinkedIn profile');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const skip = () => {
     dispatch({ type: 'SKIP_LINKEDIN' });
-    setSkipVisible(false);
     onContinue();
   };
 
@@ -38,8 +46,10 @@ export function LinkedInScreen({ state, services, dispatch, onContinue }: Linked
           <PrimaryButton
             label={state.linkedinScreenshots.length > 0 ? 'Continue' : 'Upload screenshots'}
             onPress={state.linkedinScreenshots.length > 0 ? onContinue : add}
+            disabled={loading}
+            loading={loading}
           />
-          <PrimaryButton label="Skip for now" onPress={() => setSkipVisible(true)} variant="secondary" />
+          <PrimaryButton label="Skip for now" onPress={skip} variant="secondary" />
         </>
       }
     >
@@ -57,7 +67,10 @@ export function LinkedInScreen({ state, services, dispatch, onContinue }: Linked
         <View style={styles.thumbs}>
           {state.linkedinScreenshots.map((screenshot) => (
             <View key={screenshot.id} style={styles.thumb}>
-              <Text style={styles.thumbText}>{screenshot.label}</Text>
+              {screenshot.uri ? <Image source={{ uri: screenshot.uri }} style={styles.thumbImage} resizeMode="cover" /> : null}
+              <Text numberOfLines={2} style={styles.thumbText}>
+                {screenshot.label}
+              </Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Remove ${screenshot.label}`}
@@ -73,20 +86,11 @@ export function LinkedInScreen({ state, services, dispatch, onContinue }: Linked
             <Text style={styles.addText}>+</Text>
           </Pressable>
         </View>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <Text style={styles.consequence}>
           You can continue, but your agent may have less verified information to work with.
         </Text>
       </View>
-      <ConfirmModal
-        visible={skipVisible}
-        title="Your profile will be incomplete"
-        message="Without LinkedIn, your agent may have less information about your education, experience, and professional background. You can add it later, but your profile will remain incomplete until you do."
-        primaryLabel="Add LinkedIn"
-        secondaryLabel="Skip anyway"
-        onPrimary={add}
-        onSecondary={skip}
-        onRequestClose={() => setSkipVisible(false)}
-      />
     </ScreenShell>
   );
 }
@@ -137,19 +141,29 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   thumb: {
-    width: 70,
-    height: 92,
+    width: 86,
+    minHeight: 122,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.panelInk,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 7,
+    justifyContent: 'flex-start',
+    padding: 7,
+  },
+  thumbImage: {
+    aspectRatio: 0.8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 8,
+    width: '100%',
   },
   thumbText: {
     color: colors.muted,
     fontFamily: fonts.body,
     fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
   },
   remove: {
     position: 'absolute',
@@ -169,8 +183,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyMedium,
   },
   add: {
-    width: 70,
-    height: 92,
+    width: 86,
+    height: 122,
     borderRadius: 10,
     borderWidth: 1,
     borderStyle: 'dashed',
@@ -187,5 +201,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 13,
     lineHeight: 19,
+  },
+  error: {
+    color: colors.error,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 10,
   },
 });

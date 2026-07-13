@@ -1,4 +1,5 @@
 import {
+  AuthSession,
   BasicInfoField,
   Interest,
   LinkedInScreenshot,
@@ -14,6 +15,8 @@ export type OnboardingAction =
   | { type: 'BACK' }
   | { type: 'NEXT' }
   | { type: 'UPDATE_BASIC_INFO'; field: BasicInfoField; value: string }
+  | { type: 'SET_AUTH_SESSION'; session: AuthSession }
+  | { type: 'LOGOUT' }
   | { type: 'TOGGLE_INTEREST'; interest: Interest }
   | { type: 'SET_LIVENESS'; status: OnboardingState['livenessStatus'] }
   | { type: 'SET_GITHUB_CONNECTING' }
@@ -57,6 +60,10 @@ export function onboardingReducer(
           [action.field]: action.value,
         },
       };
+    case 'SET_AUTH_SESSION':
+      return { ...state, authSession: action.session };
+    case 'LOGOUT':
+      return initialOnboardingState;
     case 'TOGGLE_INTEREST': {
       const exists = state.basicInfo.interests.includes(action.interest);
       return {

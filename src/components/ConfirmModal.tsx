@@ -9,6 +9,8 @@ interface ConfirmModalProps {
   message: string;
   primaryLabel: string;
   secondaryLabel: string;
+  primaryLoading?: boolean;
+  secondaryLoading?: boolean;
   onPrimary: () => void;
   onSecondary: () => void;
   onRequestClose: () => void;
@@ -20,6 +22,8 @@ export function ConfirmModal({
   message,
   primaryLabel,
   secondaryLabel,
+  primaryLoading = false,
+  secondaryLoading = false,
   onPrimary,
   onSecondary,
   onRequestClose,
@@ -30,8 +34,8 @@ export function ConfirmModal({
         <View style={styles.card} accessibilityRole="alert">
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.message}>{message}</Text>
-          <PrimaryButton label={primaryLabel} onPress={onPrimary} />
-          <PrimaryButton label={secondaryLabel} onPress={onSecondary} variant="secondary" />
+          <PrimaryButton label={primaryLabel} onPress={onPrimary} loading={primaryLoading} />
+          <PrimaryButton label={secondaryLabel} onPress={onSecondary} variant="secondary" loading={secondaryLoading} />
         </View>
       </View>
     </Modal>

@@ -15,15 +15,34 @@ interface CvScreenProps {
 }
 
 export function CvScreen({ state, services, dispatch, onContinue }: CvScreenProps) {
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
   const pick = async () => {
-    const file = await services.cv.pickFile();
-    dispatch({ type: 'SELECT_CV', file });
+    setError('');
+    try {
+      setLoading(true);
+      const file = await services.cv.pickFile();
+      await services.cv.upload(state.authSession, file);
+      dispatch({ type: 'SELECT_CV', file });
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Unable to upload CV');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <ScreenShell
       scroll={false}
-      footer={<PrimaryButton label={state.cvFile ? 'Continue' : 'Upload CV'} onPress={state.cvFile ? onContinue : pick} />}
+      footer={
+        <PrimaryButton
+          label={state.cvFile ? 'Continue' : 'Upload CV'}
+          onPress={state.cvFile ? onContinue : pick}
+          disabled={loading}
+          loading={loading}
+        />
+      }
     >
       <View style={styles.content}>
         <View style={styles.glyph}>
@@ -49,6 +68,7 @@ export function CvScreen({ state, services, dispatch, onContinue }: CvScreenProp
             <Text style={styles.hintText}>PDF, DOC, or DOCX works fine. CV is required for this simulated flow.</Text>
           </View>
         )}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
     </ScreenShell>
   );
@@ -134,5 +154,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontFamily: fonts.bodyMedium,
     fontSize: 18,
+  },
+  error: {
+    color: colors.error,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 12,
   },
 });

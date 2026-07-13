@@ -8,13 +8,18 @@ import { colors, fonts, radii, type } from '../theme/tokens';
 
 interface AgentLiveScreenProps {
   state: OnboardingState;
+  onViewProfile?: () => void;
+  loadingProfile?: boolean;
 }
 
-export function AgentLiveScreen({ state }: AgentLiveScreenProps) {
+export function AgentLiveScreen({ state, onViewProfile = () => undefined, loadingProfile = false }: AgentLiveScreenProps) {
   const missing = missingRecommendedSources(state);
 
   return (
-    <ScreenShell scroll={false} footer={<PrimaryButton label="See your agent" onPress={() => undefined} />}>
+    <ScreenShell
+      scroll={false}
+      footer={<PrimaryButton label="View My Complete Profile" onPress={onViewProfile} loading={loadingProfile} />}
+    >
       <View style={styles.content}>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>OK</Text>

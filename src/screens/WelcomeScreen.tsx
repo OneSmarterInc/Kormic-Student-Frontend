@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { KormicWordmark } from '../components/KormicWordmark';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
@@ -7,16 +7,19 @@ import { colors, fonts, type } from '../theme/tokens';
 
 interface WelcomeScreenProps {
   onStart: () => void;
+  onLogin: () => void;
 }
 
-export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
+export function WelcomeScreen({ onStart, onLogin }: WelcomeScreenProps) {
   return (
     <ScreenShell
       scroll={false}
       footer={
         <View style={styles.footer}>
           <PrimaryButton label="Get started" onPress={onStart} accessibilityLabel="Get started" />
-          <Text style={styles.signIn}>Already started? Sign in</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Sign in" onPress={onLogin} hitSlop={8}>
+            <Text style={styles.signIn}>Already registered? Sign in</Text>
+          </Pressable>
         </View>
       }
     >

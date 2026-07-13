@@ -3,11 +3,14 @@ import { TextStyle } from 'react-native';
 export const colors = {
   ink: '#12132A',
   panelInk: '#1E2145',
+  surface: '#1E2145',
   offWhite: '#F6F5F1',
+  text: '#F6F5F1',
   coral: '#FF6B4A',
   connectionBlue: '#5B8DEF',
   muted: '#8A8BA3',
   line: 'rgba(255,255,255,0.10)',
+  border: 'rgba(255,255,255,0.10)',
   textSoft: '#CBCAD9',
   error: '#FFB09D',
 };
