@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
 import { TextField } from '../components/TextField';
 import { AuthSession, LinkedInScreenshot } from '../models/onboarding';
+import { AriaBotScreen } from './AriaBotScreen';
 import {
   API_BASE_URL,
   connectGithub,
   deleteProfileImage,
   deleteResume,
+  downloadResumeFile,
+  getLinkedInImage,
   getProfileImage,
-  getResumeUrl,
   LinkedInHistoryRecord,
   listLinkedInHistory,
   listStudentResumes,
@@ -121,7 +123,7 @@ interface ProfileScreenProps {
   onLogout?: () => void;
 }
 
-type ProfileSection = 'overview' | 'edit' | 'resumes' | 'github' | 'linkedin';
+type ProfileSection = 'overview' | 'edit' | 'resumes' | 'github' | 'linkedin' | 'aria';
 
 const EXTRACTED_DATA_SECTIONS = [
   {
@@ -568,6 +570,31 @@ export function ProfileScreen({
     }
   };
 
+  const downloadResume = async (resume: ResumeRecord) => {
+    if (!session) {
+      setSectionError('Please sign in again to download a resume.');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      setSectionError('');
+      const fileBlob = await downloadResumeFile(session, resume.id);
+      const fileUrl = URL.createObjectURL(fileBlob);
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = resume.original_filename || `resume-${resume.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(fileUrl);
+    } catch (downloadError) {
+      setSectionError(downloadError instanceof Error ? downloadError.message : 'Unable to download resume');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const removeResume = async (resumeId: ResumeRecord['id']) => {
     if (!session) {
       setSectionError('Please sign in again to delete a resume.');
@@ -786,6 +813,7 @@ export function ProfileScreen({
           actionLoading={actionLoading}
           error={sectionError}
           onUpload={uploadNewResume}
+          onDownload={downloadResume}
           onDelete={removeResume}
           onRefresh={loadResumes}
         />
@@ -849,6 +877,7 @@ export function ProfileScreen({
 
       {section === 'linkedin' ? (
         <LinkedinImageHistory
+          session={session}
           loading={linkedinLoading}
           localPreviews={linkedinPreviews}
           records={linkedinImages}
@@ -856,6 +885,8 @@ export function ProfileScreen({
           actionLoading={actionLoading}
         />
       ) : null}
+
+      {section === 'aria' ? <AriaBotScreen session={session} /> : null}
 
       {section === 'overview' ? (
         <>
@@ -1221,6 +1252,8 @@ function sectionTitle(section: ProfileSection) {
       return 'GitHub';
     case 'linkedin':
       return 'LinkedIn';
+    case 'aria':
+      return 'Chat with Aria';
   }
 }
 
@@ -1237,6 +1270,7 @@ function ProfileMenu({
     { key: 'resumes', label: 'Resume update/view' },
     { key: 'github', label: 'GitHub URL' },
     { key: 'linkedin', label: 'LinkedIn images' },
+    { key: 'aria', label: 'Chat with Aria' },
   ];
 
   return (
@@ -1421,6 +1455,7 @@ function ResumeManager({
   actionLoading,
   error,
   onUpload,
+  onDownload,
   onDelete,
   onRefresh,
 }: {
@@ -1429,6 +1464,7 @@ function ResumeManager({
   actionLoading: boolean;
   error: string;
   onUpload: () => void;
+  onDownload: (resume: ResumeRecord) => void;
   onDelete: (resumeId: ResumeRecord['id']) => void;
   onRefresh: () => void;
 }) {
@@ -1474,14 +1510,15 @@ function ResumeManager({
           <View style={styles.actionRow}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => {
-                if (resume.resume_url) {
-                  Linking.openURL(resume.resume_url);
-                }
-              }}
-              style={styles.smallButton}
+              disabled={actionLoading}
+              onPress={() => onDownload(resume)}
+              style={[styles.smallButton, actionLoading && styles.disabledButton]}
             >
-              <Text style={styles.smallButtonText}>View</Text>
+              {actionLoading ? (
+                <ActivityIndicator color={colors.offWhite} />
+              ) : (
+                <Text style={styles.smallButtonText}>View</Text>
+              )}
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -1565,18 +1602,21 @@ function SourceEditor({
 }
 
 function LinkedinImageHistory({
+  session,
   loading,
   localPreviews,
   records,
   actionLoading,
   onRefresh,
 }: {
+  session?: AuthSession;
   loading: boolean;
   localPreviews: LinkedInScreenshot[];
   records: LinkedInHistoryRecord[];
   actionLoading: boolean;
   onRefresh: () => void;
 }) {
+  const [authorizedImageUris, setAuthorizedImageUris] = useState<Record<string, string>>({});
   const savedImages = records
     .map((record, index) => ({
       id: String(
@@ -1592,6 +1632,54 @@ function LinkedinImageHistory({
       createdAt: typeof record.created_at === 'string' ? record.created_at : undefined,
     }))
     .filter((record) => Boolean(record.uri));
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrls: string[] = [];
+
+    const loadAuthorizedImages = async () => {
+      if (!session || typeof URL === 'undefined') {
+        setAuthorizedImageUris({});
+        return;
+      }
+
+      const protectedImages = savedImages.filter((image) =>
+        image.uri ? isProtectedLinkedinImageUrl(image.uri) : false,
+      );
+      if (protectedImages.length === 0) {
+        setAuthorizedImageUris({});
+        return;
+      }
+
+      const entries = await Promise.all(
+        protectedImages.map(async (image) => {
+          try {
+            const blob = await getLinkedInImage(session, image.uri ?? '');
+            const objectUrl = URL.createObjectURL(blob);
+            objectUrls = [...objectUrls, objectUrl];
+            return [image.id, objectUrl] as const;
+          } catch {
+            return [image.id, ''] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+        return;
+      }
+
+      setAuthorizedImageUris(Object.fromEntries(entries.filter(([, uri]) => Boolean(uri))));
+    };
+
+    loadAuthorizedImages();
+
+    return () => {
+      cancelled = true;
+      objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, session?.access, session?.user?.student_id]);
 
   return (
     <View style={styles.linkedinHistory}>
@@ -1637,7 +1725,11 @@ function LinkedinImageHistory({
               <LinkedinImageCard
                 key={image.id}
                 title={image.title}
-                uri={image.uri}
+                uri={
+                  image.uri && isProtectedLinkedinImageUrl(image.uri)
+                    ? authorizedImageUris[image.id]
+                    : image.uri
+                }
                 caption={image.createdAt ? `Uploaded ${formatDate(image.createdAt)}` : undefined}
               />
             ))}
@@ -1722,7 +1814,13 @@ function ExtractedGroup({
       <View style={featured ? styles.extractedSummary : styles.extractedGroupBody}>
         {entries.map(([key, value]) =>
           featured ? (
-            <View key={key} style={styles.extractedSummaryItem}>
+            <View
+              key={key}
+              style={[
+                styles.extractedSummaryItem,
+                shouldUseFullWidthSummaryItem(key, value) && styles.extractedSummaryItemWide,
+              ]}
+            >
               <Text style={styles.extractedLabel}>{humanizeKey(key)}</Text>
               <Text style={styles.extractedValue}>{formatExtractedValue(value)}</Text>
             </View>
@@ -1970,6 +2068,33 @@ function normalizeLinkedinHistory(data: unknown): LinkedInHistoryRecord[] {
   }
 
   const record = data as Record<string, unknown>;
+  const analyses = Array.isArray(record.analyses) ? record.analyses : [];
+  if (analyses.length > 0) {
+    return analyses.flatMap((analysis, analysisIndex) => {
+      if (!analysis || typeof analysis !== 'object') {
+        return [];
+      }
+
+      const analysisRecord = analysis as Record<string, unknown>;
+      const images = Array.isArray(analysisRecord.images) ? analysisRecord.images : [];
+      return images.filter(isLinkedinHistoryRecord).map((image, imageIndex) => ({
+        ...image,
+        id: `${String(analysisRecord.id ?? analysisIndex)}-${String(image.index ?? imageIndex)}`,
+        original_filename:
+          image.original_filename ??
+          image.filename ??
+          `Analysis #${String(analysisRecord.id ?? analysisIndex + 1)} image ${imageIndex + 1}`,
+        extracted_data:
+          image.extracted_data ??
+          (typeof analysisRecord.extracted === 'object' && analysisRecord.extracted
+            ? (analysisRecord.extracted as Record<string, unknown>)
+            : undefined),
+        created_at: typeof analysisRecord.created_at === 'string' ? analysisRecord.created_at : image.created_at,
+        analysis_id: analysisRecord.id,
+      }));
+    });
+  }
+
   const possibleLists = [record.images, record.screenshots, record.linkedin, record.results, record.history];
   const list = possibleLists.find(Array.isArray);
   return Array.isArray(list) ? list.filter(isLinkedinHistoryRecord) : [];
@@ -1979,8 +2104,14 @@ function isLinkedinHistoryRecord(value: unknown): value is LinkedInHistoryRecord
   return Boolean(value && typeof value === 'object');
 }
 
+function shouldUseFullWidthSummaryItem(key: string, value: unknown) {
+  const textValue = formatExtractedValue(value);
+  return key === 'institution' || key === 'email' || textValue.length > 34;
+}
+
 function getLinkedinRecordImageUri(record: LinkedInHistoryRecord) {
-  const rawValue = record.image_url ?? record.image ?? record.file_path ?? record.screenshot;
+  const rawValue =
+    record.uploaded_image_url ?? record.image_url ?? record.image ?? record.file_path ?? record.screenshot;
   if (typeof rawValue !== 'string' || rawValue.length === 0) {
     return undefined;
   }
@@ -2012,6 +2143,10 @@ function getRenderableMediaUrl(value: string | null | undefined) {
 
 function isProtectedProfileImageUrl(value: string) {
   return /\/api\/profile\/[^/]+\/image\/?$/i.test(value);
+}
+
+function isProtectedLinkedinImageUrl(value: string) {
+  return /\/api\/profile\/linkedin\/[^/]+\/images\/[^/]+\/?$/i.test(value);
 }
 
 function toProfileImageFile(image: LinkedInScreenshot): ProfileImageFile {
@@ -2629,8 +2764,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     gap: 5,
-    minWidth: '47%',
+    maxWidth: '100%',
     padding: 10,
+    width: '47%',
+  },
+  extractedSummaryItemWide: {
+    width: '100%',
   },
   extractedLabel: {
     color: '#A6A7C2',
@@ -2640,9 +2779,11 @@ const styles = StyleSheet.create({
   },
   extractedValue: {
     color: colors.offWhite,
+    flexShrink: 1,
     fontFamily: fonts.bodyMedium,
     fontSize: 14,
     lineHeight: 20,
+    width: '100%',
   },
   extractedSection: {
     gap: 9,

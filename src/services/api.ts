@@ -1,6 +1,11 @@
 import { AuthSession, AuthUser, BasicInfo, LinkedInScreenshot, SelectedCvFile } from '../models/onboarding';
 
-export const API_BASE_URL = 'https://chemistry-wants-softball-traveling.trycloudflare.com/api';
+declare const process: { env?: Record<string, string | undefined> } | undefined;
+
+const DEFAULT_API_BASE_URL = 'https://killing-derek-drawing-surgeons.trycloudflare.com/api';
+
+export const API_BASE_URL =
+  typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL : DEFAULT_API_BASE_URL;
 
 const ACCESS_TOKEN_KEY = 'kormic.access';
 const REFRESH_TOKEN_KEY = 'kormic.refresh';
@@ -82,14 +87,26 @@ export interface LinkedInHistoryRecord {
   image_url?: string;
   file_path?: string;
   screenshot?: string;
+  uploaded_image_url?: string;
+  index?: number;
   original_filename?: string;
   filename?: string;
   extracted_data?: Record<string, unknown>;
+  extracted?: Record<string, unknown>;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+export interface LinkedInAnalysisRecord {
+  id?: number | string;
+  images?: LinkedInHistoryRecord[];
+  extracted?: Record<string, unknown>;
   created_at?: string;
   [key: string]: unknown;
 }
 
 export interface LinkedInHistoryResponse {
+  analyses?: LinkedInAnalysisRecord[];
   images?: LinkedInHistoryRecord[];
   screenshots?: LinkedInHistoryRecord[];
   linkedin?: LinkedInHistoryRecord[];
@@ -108,6 +125,13 @@ export interface ProfileImageResponse {
   status?: string;
   student_id?: string;
   profile_image_url?: string | null;
+  message?: string;
+}
+
+export interface AriaChatResponse {
+  agent?: string;
+  student_id?: string;
+  reply?: string;
   message?: string;
 }
 
@@ -287,6 +311,52 @@ async function requestBlobWithSession(
   }
 
   const retryResponse = await fetch(`${API_BASE_URL}${path}`, initForAccessToken(session.access));
+  if (!retryResponse.ok) {
+    const retryData = await parseJson<ApiErrorBody>(retryResponse);
+    if (retryResponse.status === 401) {
+      clearSavedTokens();
+    }
+    throw new Error(getApiError(retryData, fallbackError));
+  }
+
+  return retryResponse.blob();
+}
+
+async function requestBlobUrlWithSession(
+  session: AuthSession,
+  url: string,
+  initForAccessToken: (accessToken: string) => RequestInit,
+  fallbackError: string,
+) {
+  if (!session.access) {
+    throw new Error('Missing auth token. Please sign in again.');
+  }
+
+  const firstResponse = await fetch(url, initForAccessToken(session.access));
+  if (firstResponse.ok) {
+    return firstResponse.blob();
+  }
+
+  const firstData = await parseJson<ApiErrorBody>(firstResponse);
+  const refreshToken = session.refresh || getSavedRefreshToken();
+  if (firstResponse.status !== 401 || !refreshToken) {
+    throw new Error(getApiError(firstData, fallbackError));
+  }
+
+  try {
+    const refreshed = await refreshAccessToken(refreshToken);
+    session.access = refreshed.access;
+    session.refresh = refreshed.refresh ?? refreshToken;
+    saveAccessToken(refreshed.access);
+    if (session.refresh) {
+      saveRefreshToken(session.refresh);
+    }
+  } catch {
+    clearSavedTokens();
+    throw new Error('Your session expired. Please sign in again.');
+  }
+
+  const retryResponse = await fetch(url, initForAccessToken(session.access));
   if (!retryResponse.ok) {
     const retryData = await parseJson<ApiErrorBody>(retryResponse);
     if (retryResponse.status === 401) {
@@ -631,6 +701,39 @@ export function deleteProfileImage(session: AuthSession) {
   );
 }
 
-export function getResumeUrl(resumeId: ResumeRecord['id']) {
-  return `${API_BASE_URL}/profile/resume/${encodeURIComponent(String(resumeId))}/`;
+export function getLinkedInImage(session: AuthSession, imageUrl: string) {
+  return requestBlobUrlWithSession(
+    session,
+    imageUrl,
+    (accessToken) => ({
+      method: 'GET',
+      headers: authHeaders(accessToken, ''),
+    }),
+    'Unable to load LinkedIn image',
+  );
+}
+
+export function downloadResumeFile(session: AuthSession, resumeId: ResumeRecord['id']) {
+  return requestBlobWithSession(
+    session,
+    `/profile/resume/${encodeURIComponent(String(resumeId))}/`,
+    (accessToken) => ({
+      method: 'GET',
+      headers: authHeaders(accessToken, ''),
+    }),
+    'Unable to download resume',
+  );
+}
+
+export function chatWithAria(session: AuthSession, message: string) {
+  return requestWithSession<AriaChatResponse>(
+    session,
+    '/chat/aria/',
+    (accessToken) => ({
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ message }),
+    }),
+    'Unable to chat with Aria',
+  );
 }
