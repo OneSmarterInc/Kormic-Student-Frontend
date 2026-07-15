@@ -19,6 +19,7 @@ const requiredFields: Array<keyof BasicInfo> = [
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phonePattern = /^\+?[0-9][0-9\s().-]{6,19}$/;
+const graduationYearPattern = /\b(19|20)\d{2}\b/;
 
 const labels: Record<keyof BasicInfo, string> = {
   fullName: 'Enter your full name',
@@ -60,11 +61,20 @@ export function validateBasicInfo(info: BasicInfo): BasicInfoErrors {
     errors.phone = 'Enter a valid phone number';
   }
 
+  if (info.expectedGraduation.trim() && !parseGraduationYear(info.expectedGraduation)) {
+    errors.expectedGraduation = 'Enter a valid graduation year like 2026';
+  }
+
   if (info.interests.length === 0) {
     errors.interests = labels.interests;
   }
 
   return errors;
+}
+
+export function parseGraduationYear(value: string): number | null {
+  const match = value.match(graduationYearPattern);
+  return match ? Number(match[0]) : null;
 }
 
 export function isBasicInfoComplete(info: BasicInfo): boolean {

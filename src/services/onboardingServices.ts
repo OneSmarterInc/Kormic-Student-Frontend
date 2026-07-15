@@ -1,14 +1,14 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { Platform } from 'react-native';
 import { AuthSession, LinkedInScreenshot, SelectedCvFile } from '../models/onboarding';
-import { connectGithub, uploadLinkedIn, uploadResume } from './api';
+import { analyzeGithub, uploadLinkedIn, uploadResume } from './api';
 
 export interface LivenessService {
   startCheck(): Promise<'success' | 'retry'>;
 }
 
 export interface GitHubService {
-  connect(session: AuthSession | undefined, githubUrl: string): Promise<{ handle: string }>;
+  analyze(session: AuthSession | undefined): Promise<void>;
 }
 
 export interface LinkedInService {
@@ -83,17 +83,16 @@ export const mockOnboardingServices: OnboardingServices = {
   liveness: {
     async startCheck() {
       await wait(900);
-      return 'success';
+      return 'retry';
     },
   },
   github: {
-    async connect(session: AuthSession | undefined, githubUrl: string) {
+    async analyze(session: AuthSession | undefined) {
       await wait(900);
       if (!session) {
         throw new Error('Missing auth session');
       }
-      await connectGithub(session, githubUrl);
-      return { handle: githubUrl };
+      await analyzeGithub(session);
     },
   },
   linkedin: {

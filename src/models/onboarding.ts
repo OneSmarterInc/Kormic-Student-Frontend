@@ -2,7 +2,7 @@ export type OnboardingRoute =
   | 'Welcome'
   | 'Login'
   | 'BasicInfo'
-  | 'Liveness'
+  | 'SecuritySetup'
   | 'GitHub'
   | 'LinkedIn'
   | 'CV'
@@ -103,7 +103,6 @@ export type BasicInfoField = keyof BasicInfo;
 export const orderedRoutes: OnboardingRoute[] = [
   'Welcome',
   'BasicInfo',
-  'Liveness',
   'GitHub',
   'LinkedIn',
   'CV',
@@ -111,7 +110,7 @@ export const orderedRoutes: OnboardingRoute[] = [
   'AgentLive',
 ];
 
-export const countedRoutes: OnboardingRoute[] = ['BasicInfo', 'Liveness', 'GitHub', 'LinkedIn', 'CV', 'BuildingAgent'];
+export const countedRoutes: OnboardingRoute[] = ['BasicInfo', 'GitHub', 'LinkedIn', 'CV', 'BuildingAgent'];
 
 export const interests: Interest[] = ['Study abroad', 'Internship', 'Job', 'Not sure yet'];
 

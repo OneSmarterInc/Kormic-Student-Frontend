@@ -6,7 +6,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
 import { AuthSession, BasicInfo } from '../models/onboarding';
-import { createStudentProfile, enrollTotp, verifyTotpEnrollment, verifyTotpLogin } from '../services/api';
+import { enrollTotp, getAccessToken, getRefreshToken, verifyTotpEnrollment, verifyTotpLogin } from '../services/api';
 import { colors, fonts, radii, type } from '../theme/tokens';
 
 const TOTP_LENGTH = 6;
@@ -147,8 +147,8 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
         setBackupCodes(data.backup_codes ?? []);
         nextSession = {
           ...authSession,
-          access: data.access ?? authSession.access,
-          refresh: data.refresh ?? authSession.refresh,
+          access: getAccessToken(data) ?? authSession.access,
+          refresh: getRefreshToken(data) ?? authSession.refresh,
           mustEnrollTotp: false,
           totpRequired: false,
           user: data.user ?? (authSession.user
@@ -156,7 +156,7 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
                 ...authSession.user,
                 totp_enrolled: true,
                 onboarding: authSession.user.onboarding ?? {
-                  profile_exists: false,
+                  profile_exists: Boolean(authSession.profileCreated),
                   resume_uploaded: false,
                   github_connected: false,
                   linkedin_connected: false,
@@ -168,8 +168,8 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
       } else if (authSession.mfaToken) {
         const data = await verifyTotpLogin(authSession.mfaToken, code);
         nextSession = {
-          access: data.access,
-          refresh: data.refresh,
+          access: getAccessToken(data) ?? data.access,
+          refresh: getRefreshToken(data),
           user: data.user,
           mustEnrollTotp: false,
           totpRequired: false,
@@ -178,9 +178,9 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
         throw new Error('Missing auth session. Please sign in again.');
       }
 
-      await createStudentProfile(nextSession, basicInfo);
-      onAuthenticated({ ...nextSession, profileCreated: true });
-      onContinue({ ...nextSession, profileCreated: true });
+      const completedSession = authSession.profileCreated ? markProfileExists(nextSession) : nextSession;
+      onAuthenticated(completedSession);
+      onContinue(completedSession);
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : 'Unable to verify the TOTP code');
     } finally {
@@ -292,6 +292,26 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
       </View>
     </ScreenShell>
   );
+}
+
+function markProfileExists(session: AuthSession): AuthSession {
+  if (!session.user) {
+    return session;
+  }
+
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      onboarding: {
+        profile_exists: true,
+        resume_uploaded: Boolean(session.user.onboarding?.resume_uploaded),
+        github_connected: Boolean(session.user.onboarding?.github_connected),
+        linkedin_connected: Boolean(session.user.onboarding?.linkedin_connected),
+        setup_complete: Boolean(session.user.onboarding?.setup_complete),
+      },
+    },
+  };
 }
 
 const styles = StyleSheet.create({

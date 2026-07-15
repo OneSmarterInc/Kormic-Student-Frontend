@@ -6,7 +6,7 @@ export const routeTitles: Record<OnboardingRoute, string> = {
   Welcome: 'Welcome',
   Login: 'Login',
   BasicInfo: 'Basic information',
-  Liveness: 'Liveness',
+  SecuritySetup: 'Security setup',
   GitHub: 'GitHub',
   LinkedIn: 'LinkedIn',
   CV: 'CV',
@@ -50,8 +50,8 @@ export function canAdvanceFrom(route: OnboardingRoute, state: OnboardingState): 
       return Boolean(state.authSession);
     case 'BasicInfo':
       return isBasicInfoComplete(state.basicInfo);
-    case 'Liveness':
-      return state.livenessStatus === 'success';
+    case 'SecuritySetup':
+      return Boolean(state.authSession);
     case 'GitHub':
       return state.githubStatus === 'connected' || state.githubStatus === 'skipped';
     case 'LinkedIn':

@@ -4,7 +4,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
 import { TextField } from '../components/TextField';
-import { loginStudent } from '../services/api';
+import { getAccessToken, getRefreshToken, loginStudent } from '../services/api';
 import { OnboardingAction } from '../state/onboardingReducer';
 import { colors, fonts, type } from '../theme/tokens';
 import { AuthSession } from '../models/onboarding';
@@ -56,6 +56,8 @@ export function LoginScreen({ dispatch, onContinue }: LoginScreenProps) {
     try {
       setLoading(true);
       const data = await loginStudent({ email: email.trim(), password });
+      const access = getAccessToken(data);
+      const refresh = getRefreshToken(data);
 
       if (data.totp_required && data.mfa_token) {
         dispatch({
@@ -71,12 +73,12 @@ export function LoginScreen({ dispatch, onContinue }: LoginScreenProps) {
         return;
       }
 
-      if (data.must_enroll_totp && data.access && data.user) {
+      if (data.must_enroll_totp && access && data.user) {
         dispatch({
           type: 'SET_AUTH_SESSION',
           session: {
-            access: data.access,
-            refresh: data.refresh,
+            access,
+            refresh,
             user: data.user,
             mustEnrollTotp: true,
           },
@@ -85,10 +87,10 @@ export function LoginScreen({ dispatch, onContinue }: LoginScreenProps) {
         return;
       }
 
-      if (data.access && data.user) {
+      if (access && data.user) {
         const session = {
-          access: data.access,
-          refresh: data.refresh,
+          access,
+          refresh,
           user: data.user,
           mustEnrollTotp: false,
           totpRequired: false,

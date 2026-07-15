@@ -62,17 +62,20 @@ describe('onboarding validation and gates', () => {
     expect(canAdvanceFrom('BasicInfo', state)).toBe(true);
   });
 
-  it('prevents liveness forward navigation before simulated success', () => {
+  it('allows security setup forward navigation after authentication', () => {
     const capturing = onboardingReducer(initialOnboardingState, { type: 'SET_LIVENESS', status: 'capturing' });
-    const success = onboardingReducer(capturing, { type: 'SET_LIVENESS', status: 'success' });
+    const authenticated = onboardingReducer(capturing, {
+      type: 'SET_AUTH_SESSION',
+      session: { access: 'token', mustEnrollTotp: false },
+    });
 
-    expect(canAdvanceFrom('Liveness', capturing)).toBe(false);
-    expect(canAdvanceFrom('Liveness', success)).toBe(true);
+    expect(canAdvanceFrom('SecuritySetup', capturing)).toBe(false);
+    expect(canAdvanceFrom('SecuritySetup', authenticated)).toBe(true);
   });
 
   it('preserves state when moving backward', () => {
     let state = completeBasicInfo(initialOnboardingState);
-    state = onboardingReducer(state, { type: 'NAVIGATE', route: 'Liveness' });
+    state = onboardingReducer(state, { type: 'NAVIGATE', route: 'SecuritySetup' });
     state = onboardingReducer(state, { type: 'BACK' });
 
     expect(state.route).toBe('BasicInfo');
@@ -117,8 +120,6 @@ describe('onboarding validation and gates', () => {
     expect(state.route).toBe('BasicInfo');
 
     state = completeBasicInfo(state);
-    state = onboardingReducer(state, { type: 'NEXT' });
-    state = onboardingReducer(state, { type: 'SET_LIVENESS', status: 'success' });
     state = onboardingReducer(state, { type: 'NEXT' });
     state = onboardingReducer(state, { type: 'SET_GITHUB_CONNECTED', handle: '@priya' });
     state = onboardingReducer(state, { type: 'NEXT' });

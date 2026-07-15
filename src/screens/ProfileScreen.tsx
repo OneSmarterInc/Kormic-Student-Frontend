@@ -8,7 +8,7 @@ import { AuthSession, LinkedInScreenshot } from '../models/onboarding';
 import { AriaBotScreen } from './AriaBotScreen';
 import {
   API_BASE_URL,
-  connectGithub,
+  analyzeGithub,
   deleteProfileImage,
   deleteResume,
   downloadResumeFile,
@@ -420,7 +420,6 @@ export function ProfileScreen({
   const [resumesLoading, setResumesLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [sectionError, setSectionError] = useState('');
-  const [githubUrl, setGithubUrl] = useState(profile.github ?? '');
   const [linkedinUrl, setLinkedinUrl] = useState(profile.linkedin_url ?? '');
   const [profileDraft, setProfileDraft] = useState({
     name: profile.name ?? '',
@@ -441,7 +440,6 @@ export function ProfileScreen({
   });
 
   useEffect(() => {
-    setGithubUrl(profile.github ?? '');
     setLinkedinUrl(profile.linkedin_url ?? '');
     setProfileImageUrl(getRenderableMediaUrl(profile.profile_image_url) ?? '');
     setProfileDraft({
@@ -716,15 +714,11 @@ export function ProfileScreen({
       setSectionError('Please sign in again to update GitHub.');
       return;
     }
-    if (!githubUrl.trim()) {
-      setSectionError('Enter a GitHub profile URL first.');
-      return;
-    }
 
     try {
       setActionLoading(true);
       setSectionError('');
-      await connectGithub(session, githubUrl.trim());
+      await analyzeGithub(session);
       await onProfileChanged?.();
     } catch (githubError) {
       setSectionError(githubError instanceof Error ? githubError.message : 'Unable to analyze GitHub');
@@ -785,9 +779,15 @@ export function ProfileScreen({
         >
           <Text style={styles.menuIcon}>☰</Text>
         </Pressable>
-        <Text style={styles.topBarTitle}>
+
+        {menuOpen ? (
+           <></>
+        ) : (
+          <Text style={styles.topBarTitle}>
           {section === 'overview' ? 'Complete profile' : sectionTitle(section)}
         </Text>
+        )}
+       
         {onLogout ? (
           <Pressable
             accessibilityRole="button"
@@ -800,96 +800,99 @@ export function ProfileScreen({
         ) : null}
       </View>
 
-      {menuOpen ? <ProfileMenu active={section} onSelect={selectSection} /> : null}
-
-      {error ? <ProfileError message={error} onRetry={onRetry} loading={loading} /> : null}
-
-      {loading ? <ActivityIndicator color={colors.coral} style={styles.inlineLoader} /> : null}
-
-      {section === 'resumes' ? (
-        <ResumeManager
-          resumes={resumes}
-          loading={resumesLoading}
-          actionLoading={actionLoading}
-          error={sectionError}
-          onUpload={uploadNewResume}
-          onDownload={downloadResume}
-          onDelete={removeResume}
-          onRefresh={loadResumes}
-        />
-      ) : null}
-
-      {section === 'edit' ? (
-        <EditProfileForm
-          draft={profileDraft}
-          imageUrl={profileImageUrl}
-          imageLoading={profileImageLoading}
-          loading={actionLoading}
-          error={sectionError}
-          onChange={(field, value) => setProfileDraft((current) => ({ ...current, [field]: value }))}
-          onReplaceImage={replaceProfileImage}
-          onRemoveImage={removeProfileImage}
-          onSave={saveProfileDetails}
-        />
-      ) : null}
-
-      {section === 'github' ? (
-        <SourceEditor
-          title="GitHub"
-          description={
-            profile.github
-              ? 'Update the saved URL or run a fresh GitHub analysis.'
-              : 'Add your GitHub URL to complete this source.'
-          }
-          value={githubUrl}
-          onChange={setGithubUrl}
-          placeholder="https://github.com/username"
-          primaryLabel="Save URL"
-          secondaryLabel="Run GitHub analysis"
-          disabled={actionLoading}
-          error={sectionError}
-          onPrimary={() => savePlainUrl('github', githubUrl)}
-          onSecondary={runGithubAnalysis}
-        />
-      ) : null}
-
-      {section === 'linkedin' ? (
-        <SourceEditor
-          title="LinkedIn"
-          description={
-            profile.linkedin_url
-              ? 'Update the saved URL or upload screenshots for a fresh analysis.'
-              : 'Upload profile screenshots.'
-          }
-          value={linkedinUrl}
-          onChange={setLinkedinUrl}
-          placeholder="https://www.linkedin.com/in/username"
-          primaryLabel="Save URL"
-          secondaryLabel="Upload images"
-          showUrlField={false}
-          showPrimaryAction={false}
-          disabled={actionLoading}
-          error={sectionError}
-          onPrimary={() => savePlainUrl('linkedin_url', linkedinUrl)}
-          onSecondary={uploadLinkedinImages}
-        />
-      ) : null}
-
-      {section === 'linkedin' ? (
-        <LinkedinImageHistory
-          session={session}
-          loading={linkedinLoading}
-          localPreviews={linkedinPreviews}
-          records={linkedinImages}
-          onRefresh={loadLinkedinImages}
-          actionLoading={actionLoading}
-        />
-      ) : null}
-
-      {section === 'aria' ? <AriaBotScreen session={session} /> : null}
-
-      {section === 'overview' ? (
+      {menuOpen ? (
+        <ProfileMenu active={section} onSelect={selectSection} />
+      ) : (
         <>
+          {error ? <ProfileError message={error} onRetry={onRetry} loading={loading} /> : null}
+
+          {loading ? <ActivityIndicator color={colors.coral} style={styles.inlineLoader} /> : null}
+
+          {section === 'resumes' ? (
+            <ResumeManager
+              resumes={resumes}
+              loading={resumesLoading}
+              actionLoading={actionLoading}
+              error={sectionError}
+              onUpload={uploadNewResume}
+              onDownload={downloadResume}
+              onDelete={removeResume}
+              onRefresh={loadResumes}
+            />
+          ) : null}
+
+          {section === 'edit' ? (
+            <EditProfileForm
+              draft={profileDraft}
+              imageUrl={profileImageUrl}
+              imageLoading={profileImageLoading}
+              loading={actionLoading}
+              error={sectionError}
+              onChange={(field, value) => setProfileDraft((current) => ({ ...current, [field]: value }))}
+              onReplaceImage={replaceProfileImage}
+              onRemoveImage={removeProfileImage}
+              onSave={saveProfileDetails}
+            />
+          ) : null}
+
+          {section === 'github' ? (
+            <SourceEditor
+              title="GitHub"
+              description={
+                profile.github
+                  ? 'Run a fresh analysis on your connected GitHub account.'
+                  : 'Connect GitHub with OAuth before running analysis.'
+              }
+              value=""
+              onChange={() => undefined}
+              primaryLabel="Save"
+              secondaryLabel="Analyze GitHub"
+              showUrlField={false}
+              showPrimaryAction={false}
+              disabled={actionLoading}
+              error={sectionError}
+              onPrimary={() => undefined}
+              onSecondary={runGithubAnalysis}
+            />
+          ) : null}
+
+          {section === 'linkedin' ? (
+            <SourceEditor
+              title="LinkedIn"
+              description={
+                profile.linkedin_url
+                  ? 'Update the saved URL or upload screenshots for a fresh analysis.'
+                  : 'Upload profile screenshots.'
+              }
+              value={linkedinUrl}
+              onChange={setLinkedinUrl}
+              placeholder="https://www.linkedin.com/in/username"
+              primaryLabel="Save URL"
+              secondaryLabel="Upload images"
+              showUrlField={false}
+              showPrimaryAction={false}
+              disabled={actionLoading}
+              error={sectionError}
+              onPrimary={() => savePlainUrl('linkedin_url', linkedinUrl)}
+              onSecondary={uploadLinkedinImages}
+            />
+          ) : null}
+
+          {section === 'linkedin' ? (
+            <LinkedinImageHistory
+              session={session}
+              loading={linkedinLoading}
+              localPreviews={linkedinPreviews}
+              records={linkedinImages}
+              onRefresh={loadLinkedinImages}
+              actionLoading={actionLoading}
+            />
+          ) : null}
+
+          {section === 'aria' ? <AriaBotScreen session={session} /> : null}
+
+          {section === 'overview' ? (
+            <>
           <View style={styles.profileHero}>
             <View style={styles.header}>
               <ProfileAvatar name={profile.name || profile.email || ''} imageUrl={profileImageUrl} loading={profileImageLoading} />
@@ -1014,8 +1017,10 @@ export function ProfileScreen({
               </View>
             </InfoCard>
           </View>
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
     </ScreenShell>
   );
 }
@@ -1268,7 +1273,7 @@ function ProfileMenu({
     { key: 'overview', label: 'Overview' },
     { key: 'edit', label: 'Edit Profile' },
     { key: 'resumes', label: 'Resume update/view' },
-    { key: 'github', label: 'GitHub URL' },
+    { key: 'github', label: 'GitHub' },
     { key: 'linkedin', label: 'LinkedIn images' },
     { key: 'aria', label: 'Chat with Aria' },
   ];
@@ -1560,7 +1565,7 @@ function SourceEditor({
   description: string;
   value: string;
   onChange: (value: string) => void;
-  placeholder: string;
+  placeholder?: string;
   primaryLabel: string;
   secondaryLabel: string;
   showUrlField?: boolean;

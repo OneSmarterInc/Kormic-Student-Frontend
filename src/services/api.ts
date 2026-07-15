@@ -1,4 +1,6 @@
 import { AuthSession, AuthUser, BasicInfo, LinkedInScreenshot, SelectedCvFile } from '../models/onboarding';
+import { clearSavedTokens, getSavedRefreshToken, saveAccessToken, saveRefreshToken } from './tokenStorage';
+import { parseGraduationYear } from '../utils/validation';
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
@@ -6,9 +8,6 @@ const DEFAULT_API_BASE_URL = 'https://killing-derek-drawing-surgeons.trycloudfla
 
 export const API_BASE_URL =
   typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL : DEFAULT_API_BASE_URL;
-
-const ACCESS_TOKEN_KEY = 'kormic.access';
-const REFRESH_TOKEN_KEY = 'kormic.refresh';
 
 interface ApiErrorBody {
   detail?: string;
@@ -21,7 +20,9 @@ export interface RegisterResponse {
   message?: string;
   must_enroll_totp?: boolean;
   access?: string;
+  access_token?: string;
   refresh?: string;
+  refresh_token?: string;
   user?: AuthUser;
   detail?: string;
 }
@@ -34,6 +35,8 @@ export interface LoginResponse {
   mfa_token?: string;
   totp_required?: boolean;
   expires_in?: number;
+  access_token?: string;
+  refresh_token?: string;
   detail?: string;
   message?: string;
 }
@@ -47,7 +50,9 @@ export interface TotpEnrollResponse {
 
 export interface TotpVerifyEnrollmentResponse {
   access?: string;
+  access_token?: string;
   refresh?: string;
+  refresh_token?: string;
   user?: AuthUser;
   backup_codes?: string[];
   detail?: string;
@@ -56,7 +61,9 @@ export interface TotpVerifyEnrollmentResponse {
 
 export interface VerifyTotpLoginResponse {
   access: string;
+  access_token?: string;
   refresh?: string;
+  refresh_token?: string;
   user: AuthUser;
   detail?: string;
   message?: string;
@@ -66,7 +73,9 @@ export interface MeResponse extends AuthUser {}
 
 export interface RefreshResponse {
   access: string;
+  access_token?: string;
   refresh?: string;
+  refresh_token?: string;
 }
 
 export interface ResumeRecord {
@@ -135,6 +144,51 @@ export interface AriaChatResponse {
   message?: string;
 }
 
+export interface GithubConnectResponse {
+  authorize_url: string;
+}
+
+export interface GithubStatusResponse {
+  connected: boolean;
+  github_username?: string;
+  connected_at?: string;
+}
+
+export interface GithubAnalysisResponse {
+  status?: string;
+  student_id?: string;
+  skills_added?: string[];
+  github_result?: Record<string, unknown>;
+  message?: string;
+}
+
+export interface GithubHistoryResponse {
+  student_id?: string;
+  count?: number;
+  analyses?: Array<{
+    github_url?: string;
+    result?: Record<string, unknown>;
+    created_at?: string;
+  }>;
+}
+
+export interface AriaConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AriaHistoryMessage {
+  sender: 'user' | 'assistant' | string;
+  content: string;
+  created_at?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface AriaHistoryResponse {
+  count?: number;
+  messages?: AriaHistoryMessage[];
+}
+
 async function parseJson<T>(response: Response): Promise<T | undefined> {
   const text = await response.text();
   if (!text) {
@@ -183,41 +237,16 @@ async function requestJson<T>(path: string, init: RequestInit, fallbackError: st
   return (data ?? {}) as T;
 }
 
-function saveAccessToken(accessToken: string) {
-  if (typeof localStorage === 'undefined') {
-    return;
-  }
-
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+export function getAccessToken(data: { access?: string; access_token?: string }) {
+  return data.access ?? data.access_token;
 }
 
-function saveRefreshToken(refreshToken: string) {
-  if (typeof localStorage === 'undefined') {
-    return;
-  }
-
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-}
-
-function getSavedRefreshToken() {
-  if (typeof localStorage === 'undefined') {
-    return undefined;
-  }
-
-  return localStorage.getItem(REFRESH_TOKEN_KEY) ?? undefined;
-}
-
-function clearSavedTokens() {
-  if (typeof localStorage === 'undefined') {
-    return;
-  }
-
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
+export function getRefreshToken(data: { refresh?: string; refresh_token?: string }) {
+  return data.refresh ?? data.refresh_token;
 }
 
 export async function refreshAccessToken(refreshToken: string) {
-  return requestJson<RefreshResponse>(
+  const data = await requestJson<RefreshResponse>(
     '/auth/refresh/',
     {
       method: 'POST',
@@ -226,6 +255,17 @@ export async function refreshAccessToken(refreshToken: string) {
     },
     'Unable to refresh session',
   );
+  const access = getAccessToken(data);
+
+  if (!access) {
+    throw new Error('Unable to refresh session');
+  }
+
+  return {
+    ...data,
+    access,
+    refresh: getRefreshToken(data),
+  };
 }
 
 async function requestWithSession<T>(
@@ -245,7 +285,7 @@ async function requestWithSession<T>(
     return (firstData ?? {}) as T;
   }
 
-  const refreshToken = session.refresh || getSavedRefreshToken();
+  const refreshToken = session.refresh || (await getSavedRefreshToken());
   if (firstResponse.status !== 401 || !refreshToken) {
     throw new Error(getApiError(firstData, fallbackError));
   }
@@ -254,12 +294,12 @@ async function requestWithSession<T>(
     const refreshed = await refreshAccessToken(refreshToken);
     session.access = refreshed.access;
     session.refresh = refreshed.refresh ?? refreshToken;
-    saveAccessToken(refreshed.access);
+    await saveAccessToken(refreshed.access);
     if (session.refresh) {
-      saveRefreshToken(session.refresh);
+      await saveRefreshToken(session.refresh);
     }
   } catch {
-    clearSavedTokens();
+    await clearSavedTokens();
     throw new Error('Your session expired. Please sign in again.');
   }
 
@@ -268,7 +308,7 @@ async function requestWithSession<T>(
 
   if (!retryResponse.ok) {
     if (retryResponse.status === 401) {
-      clearSavedTokens();
+      await clearSavedTokens();
     }
     throw new Error(getApiError(retryData, fallbackError));
   }
@@ -292,7 +332,7 @@ async function requestBlobWithSession(
   }
 
   const firstData = await parseJson<ApiErrorBody>(firstResponse);
-  const refreshToken = session.refresh || getSavedRefreshToken();
+  const refreshToken = session.refresh || (await getSavedRefreshToken());
   if (firstResponse.status !== 401 || !refreshToken) {
     throw new Error(getApiError(firstData, fallbackError));
   }
@@ -301,12 +341,12 @@ async function requestBlobWithSession(
     const refreshed = await refreshAccessToken(refreshToken);
     session.access = refreshed.access;
     session.refresh = refreshed.refresh ?? refreshToken;
-    saveAccessToken(refreshed.access);
+    await saveAccessToken(refreshed.access);
     if (session.refresh) {
-      saveRefreshToken(session.refresh);
+      await saveRefreshToken(session.refresh);
     }
   } catch {
-    clearSavedTokens();
+    await clearSavedTokens();
     throw new Error('Your session expired. Please sign in again.');
   }
 
@@ -314,7 +354,7 @@ async function requestBlobWithSession(
   if (!retryResponse.ok) {
     const retryData = await parseJson<ApiErrorBody>(retryResponse);
     if (retryResponse.status === 401) {
-      clearSavedTokens();
+      await clearSavedTokens();
     }
     throw new Error(getApiError(retryData, fallbackError));
   }
@@ -338,7 +378,7 @@ async function requestBlobUrlWithSession(
   }
 
   const firstData = await parseJson<ApiErrorBody>(firstResponse);
-  const refreshToken = session.refresh || getSavedRefreshToken();
+  const refreshToken = session.refresh || (await getSavedRefreshToken());
   if (firstResponse.status !== 401 || !refreshToken) {
     throw new Error(getApiError(firstData, fallbackError));
   }
@@ -347,12 +387,12 @@ async function requestBlobUrlWithSession(
     const refreshed = await refreshAccessToken(refreshToken);
     session.access = refreshed.access;
     session.refresh = refreshed.refresh ?? refreshToken;
-    saveAccessToken(refreshed.access);
+    await saveAccessToken(refreshed.access);
     if (session.refresh) {
-      saveRefreshToken(session.refresh);
+      await saveRefreshToken(session.refresh);
     }
   } catch {
-    clearSavedTokens();
+    await clearSavedTokens();
     throw new Error('Your session expired. Please sign in again.');
   }
 
@@ -360,7 +400,7 @@ async function requestBlobUrlWithSession(
   if (!retryResponse.ok) {
     const retryData = await parseJson<ApiErrorBody>(retryResponse);
     if (retryResponse.status === 401) {
-      clearSavedTokens();
+      await clearSavedTokens();
     }
     throw new Error(getApiError(retryData, fallbackError));
   }
@@ -467,6 +507,8 @@ export function getMe(accessToken: string) {
 }
 
 export function createStudentProfile(session: AuthSession, basicInfo: BasicInfo) {
+  const graduationYear = parseGraduationYear(basicInfo.expectedGraduation);
+
   return requestWithSession<Record<string, unknown>>(
     session,
     '/profile/',
@@ -476,11 +518,18 @@ export function createStudentProfile(session: AuthSession, basicInfo: BasicInfo)
       body: JSON.stringify({
         name: session.user?.name || basicInfo.fullName,
         email: session.user?.email || basicInfo.email,
+        phone: basicInfo.phone,
+        date_of_birth: basicInfo.dateOfBirth,
+        dateOfBirth: basicInfo.dateOfBirth,
+        city: basicInfo.city,
+        region: basicInfo.region,
+        year_in_college: basicInfo.yearInCollege,
+        yearInCollege: basicInfo.yearInCollege,
         country: basicInfo.country,
         institution: basicInfo.college,
         major: basicInfo.fieldOfStudy,
         program: basicInfo.degreeLevel,
-        graduation_year: basicInfo.expectedGraduation,
+        graduation_year: graduationYear,
         interests: basicInfo.interests,
         target_degree_or_field: basicInfo.targetDegreeOrField,
       }),
@@ -522,18 +571,68 @@ export function uploadResume(session: AuthSession, file: SelectedCvFile) {
   );
 }
 
-export function connectGithub(session: AuthSession, githubUrl: string) {
-  return requestWithSession<Record<string, unknown>>(
+export function getGithubConnectUrl(session: AuthSession) {
+  return requestWithSession<GithubConnectResponse>(
+    session,
+    '/auth/github/connect/',
+    (accessToken) => ({
+      method: 'GET',
+      headers: authHeaders(accessToken),
+    }),
+    'Unable to start GitHub OAuth',
+  );
+}
+
+export function getGithubStatus(session: AuthSession) {
+  return requestWithSession<GithubStatusResponse>(
+    session,
+    '/auth/github/status/',
+    (accessToken) => ({
+      method: 'GET',
+      headers: authHeaders(accessToken),
+    }),
+    'Unable to check GitHub connection',
+  );
+}
+
+export function analyzeGithub(session: AuthSession) {
+  return requestWithSession<GithubAnalysisResponse>(
     session,
     '/profile/github/',
     (accessToken) => ({
       method: 'POST',
       headers: authHeaders(accessToken),
-      body: JSON.stringify({
-        github_url: githubUrl,
-      }),
+      body: JSON.stringify({}),
     }),
-    'Unable to connect GitHub',
+    'Unable to analyze GitHub',
+  );
+}
+
+export function getGithubHistory(session: AuthSession) {
+  if (!session.user?.student_id) {
+    throw new Error('Missing student ID. Please sign in again.');
+  }
+
+  return requestWithSession<GithubHistoryResponse>(
+    session,
+    `/profile/${encodeURIComponent(session.user.student_id)}/github-history/`,
+    (accessToken) => ({
+      method: 'GET',
+      headers: authHeaders(accessToken),
+    }),
+    'Unable to load GitHub analysis history',
+  );
+}
+
+export function disconnectGithub(session: AuthSession) {
+  return requestWithSession<void>(
+    session,
+    '/auth/github/disconnect/',
+    (accessToken) => ({
+      method: 'DELETE',
+      headers: authHeaders(accessToken),
+    }),
+    'Unable to disconnect GitHub',
   );
 }
 
@@ -725,15 +824,36 @@ export function downloadResumeFile(session: AuthSession, resumeId: ResumeRecord[
   );
 }
 
-export function chatWithAria(session: AuthSession, message: string) {
+export function chatWithAria(
+  session: AuthSession,
+  message: string,
+  conversation: AriaConversationMessage[] = [],
+) {
   return requestWithSession<AriaChatResponse>(
     session,
     '/chat/aria/',
     (accessToken) => ({
       method: 'POST',
       headers: authHeaders(accessToken),
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        conversation,
+        history: conversation,
+        messages: conversation,
+      }),
     }),
     'Unable to chat with Aria',
+  );
+}
+
+export function getAriaHistory(session: AuthSession) {
+  return requestWithSession<AriaHistoryResponse>(
+    session,
+    '/chat/aria/history/',
+    (accessToken) => ({
+      method: 'GET',
+      headers: authHeaders(accessToken),
+    }),
+    'Unable to load Aria chat history',
   );
 }

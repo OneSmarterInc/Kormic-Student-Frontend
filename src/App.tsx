@@ -14,57 +14,23 @@ import { LinkedInScreen } from './screens/LinkedInScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { ProfileScreen, StudentProfile } from './screens/ProfileScreen';
 import { WelcomeScreen } from './screens/WelcomeScreen';
-import { getMe, getStudentProfile, refreshAccessToken } from './services/api';
+import { createStudentProfile, getMe, getStudentProfile, refreshAccessToken } from './services/api';
 import { mockOnboardingServices } from './services/onboardingServices';
+import { clearSavedTokens, getSavedTokens, saveAccessToken, saveTokens } from './services/tokenStorage';
 import { onboardingReducer } from './state/onboardingReducer';
 import { colors } from './theme/tokens';
 import TotpScreen from './screens/TotpSetupScreen';
 import { AuthSession } from './models/onboarding';
-
-const ACCESS_TOKEN_KEY = 'kormic.access';
-const REFRESH_TOKEN_KEY = 'kormic.refresh';
-
-function saveSession(session: AuthSession) {
-  if (typeof localStorage === 'undefined') {
-    return;
-  }
-  if (session.access) {
-    localStorage.setItem(ACCESS_TOKEN_KEY, session.access);
-  }
-  if (session.refresh) {
-    localStorage.setItem(REFRESH_TOKEN_KEY, session.refresh);
-  }
-}
-
-function clearSavedSession() {
-  if (typeof localStorage === 'undefined') {
-    return;
-  }
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-}
-
-function getSavedTokens() {
-  if (typeof localStorage === 'undefined') {
-    return undefined;
-  }
-
-  const access = localStorage.getItem(ACCESS_TOKEN_KEY);
-  if (!access) {
-    return undefined;
-  }
-
-  return {
-    access,
-    refresh: localStorage.getItem(REFRESH_TOKEN_KEY) ?? undefined,
-  };
-}
+import { isBasicInfoComplete } from './utils/validation';
 
 function getFirstMissingOnboardingRoute(session: AuthSession): OnboardingRoute {
   const onboarding = session.user?.onboarding;
 
   if (!onboarding || onboarding.setup_complete) {
     return 'Profile';
+  }
+  if (!onboarding.profile_exists) {
+    return 'BasicInfo';
   }
   if (!onboarding.github_connected) {
     return 'GitHub';
@@ -101,6 +67,35 @@ function getNextRouteAfterStep(route: OnboardingRoute, session?: AuthSession): O
   return undefined;
 }
 
+function withProfileCreated(session: AuthSession): AuthSession {
+  if (!session.user) {
+    return { ...session, profileCreated: true };
+  }
+
+  return {
+    ...session,
+    profileCreated: true,
+    user: {
+      ...session.user,
+      onboarding: {
+        profile_exists: true,
+        resume_uploaded: Boolean(session.user.onboarding?.resume_uploaded),
+        github_connected: Boolean(session.user.onboarding?.github_connected),
+        linkedin_connected: Boolean(session.user.onboarding?.linkedin_connected),
+        setup_complete: Boolean(session.user.onboarding?.setup_complete),
+      },
+    },
+  };
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function isTotpEnrollmentError(message: string) {
+  return message.toLowerCase().includes('totp enrollment');
+}
+
 export default function App() {
   const [frauncesLoaded] = useFraunces({
     Fraunces_600SemiBold,
@@ -114,6 +109,7 @@ export default function App() {
   const [profile, setProfile] = useState<StudentProfile | undefined>();
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
+  const [basicInfoApiError, setBasicInfoApiError] = useState('');
   const [restoringSession, setRestoringSession] = useState(true);
   const services = useMemo(() => mockOnboardingServices, []);
 
@@ -144,16 +140,59 @@ export default function App() {
       setProfileLoading(false);
     }
   }, []);
-  const continueAfterAuth = useCallback((session: AuthSession) => {
-    saveSession(session);
-    dispatch({ type: 'SET_AUTH_SESSION', session });
-    dispatch({ type: 'SET_LIVENESS', status: 'success' });
-    const nextRoute = getFirstMissingOnboardingRoute(session);
+  const continueAfterAuth = useCallback(async (session: AuthSession) => {
+    let nextSession = session;
+    const onboarding = nextSession.user?.onboarding;
+    setBasicInfoApiError('');
+
+    if (onboarding && !onboarding.profile_exists && isBasicInfoComplete(state.basicInfo)) {
+      try {
+        await createStudentProfile(nextSession, state.basicInfo);
+        nextSession = withProfileCreated(nextSession);
+      } catch (error) {
+        const message = getErrorMessage(error, 'Unable to create student profile');
+
+        if (nextSession.refresh && isTotpEnrollmentError(message)) {
+          try {
+            const refreshed = await refreshAccessToken(nextSession.refresh);
+            nextSession = {
+              ...nextSession,
+              access: refreshed.access,
+              refresh: refreshed.refresh ?? nextSession.refresh,
+            };
+            await createStudentProfile(nextSession, state.basicInfo);
+            nextSession = withProfileCreated(nextSession);
+          } catch (retryError) {
+            setBasicInfoApiError(getErrorMessage(retryError, 'Unable to create student profile after TOTP verification'));
+          }
+        } else {
+          setBasicInfoApiError(message);
+        }
+      }
+    }
+
+    await saveTokens(nextSession);
+    dispatch({ type: 'SET_AUTH_SESSION', session: nextSession });
+    const nextRoute = getFirstMissingOnboardingRoute(nextSession);
     navigate(nextRoute);
     if (nextRoute === 'Profile') {
-      loadProfileForSession(session);
+      loadProfileForSession(nextSession);
     }
-  }, [loadProfileForSession, navigate]);
+  }, [loadProfileForSession, navigate, state.basicInfo]);
+  const continueAfterBasicInfo = useCallback(async (session?: AuthSession) => {
+    if (!session) {
+      navigate('SecuritySetup');
+      return;
+    }
+
+    if (session.mustEnrollTotp || session.totpRequired || !session.user?.totp_enrolled) {
+      await saveTokens(session);
+      navigate('SecuritySetup');
+      return;
+    }
+
+    await continueAfterAuth(session);
+  }, [continueAfterAuth, navigate]);
   const viewProfile = useCallback(async () => {
     if (!state.authSession) {
       setProfileError('Please sign in again before opening your profile.');
@@ -174,8 +213,8 @@ export default function App() {
       await loadProfileForSession(state.authSession);
     }
   }, [loadProfileForSession, state.authSession]);
-  const logout = useCallback(() => {
-    clearSavedSession();
+  const logout = useCallback(async () => {
+    await clearSavedTokens();
     setProfile(undefined);
     setProfileError('');
     setProfileLoading(false);
@@ -186,7 +225,7 @@ export default function App() {
     let active = true;
 
     const restore = async () => {
-      const tokens = getSavedTokens();
+      const tokens = await getSavedTokens();
       if (!tokens) {
         setRestoringSession(false);
         return;
@@ -204,7 +243,7 @@ export default function App() {
 
           const refreshed = await refreshAccessToken(tokens.refresh);
           access = refreshed.access;
-          localStorage.setItem(ACCESS_TOKEN_KEY, access);
+          await saveAccessToken(access);
           user = await getMe(access);
         }
         if (!active) {
@@ -219,14 +258,13 @@ export default function App() {
           totpRequired: false,
         };
         dispatch({ type: 'SET_AUTH_SESSION', session });
-        dispatch({ type: 'SET_LIVENESS', status: 'success' });
         const route = getFirstMissingOnboardingRoute(session);
         navigate(route);
         if (route === 'Profile') {
           await loadProfileForSession(session);
         }
       } catch {
-        clearSavedSession();
+        await clearSavedTokens();
       } finally {
         if (active) {
           setRestoringSession(false);
@@ -254,10 +292,18 @@ export default function App() {
       case 'Welcome':
         return <WelcomeScreen onStart={() => navigate('BasicInfo')} onLogin={() => navigate('Login')} />;
       case 'Login':
-        return <LoginScreen dispatch={dispatch} onContinue={(session) => (session ? continueAfterAuth(session) : navigate('Liveness'))} />;
+        return <LoginScreen dispatch={dispatch} onContinue={(session) => (session ? continueAfterAuth(session) : navigate('SecuritySetup'))} />;
       case 'BasicInfo':
-        return <BasicInfoScreen state={state} dispatch={dispatch} onContinue={() => navigate('Liveness')} />;
-      case 'Liveness':
+        return (
+          <BasicInfoScreen
+            state={state}
+            dispatch={dispatch}
+            onContinue={continueAfterBasicInfo}
+            apiError={basicInfoApiError}
+            onClearApiError={() => setBasicInfoApiError('')}
+          />
+        );
+      case 'SecuritySetup':
         return (
           <TotpScreen
             authSession={state.authSession}

@@ -1,42 +1,38 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { ChoiceChips } from '../components/ChoiceChips';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
 import { TextField } from '../components/TextField';
-import { BasicInfoField, OnboardingState } from '../models/onboarding';
-import { registerStudent } from '../services/api';
+import { AuthSession, BasicInfoField, interests, OnboardingState } from '../models/onboarding';
+import { createStudentProfile, getAccessToken, getRefreshToken, registerStudent } from '../services/api';
 import { OnboardingAction } from '../state/onboardingReducer';
 import { colors, fonts, type } from '../theme/tokens';
+import { validateBasicInfo, BasicInfoErrors } from '../utils/validation';
 
 interface BasicInfoScreenProps {
   state: OnboardingState;
   dispatch: React.Dispatch<OnboardingAction>;
-  onContinue: () => void;
+  onContinue: (session?: AuthSession) => void;
+  apiError?: string;
+  onClearApiError?: () => void;
 }
 
-type RegisterErrors = Partial<Record<'fullName' | 'email' | 'password' | 'api', string>>;
+type RegisterErrors = BasicInfoErrors & Partial<Record<'password' | 'api', string>>;
 
-export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreenProps) {
+export function BasicInfoScreen({ state, dispatch, onContinue, apiError: externalApiError = '', onClearApiError }: BasicInfoScreenProps) {
   const [submitted, setSubmitted] = useState(false);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [apiError, setApiError] = useState('');
+  const [localApiError, setLocalApiError] = useState('');
+  const isCreatingMissingProfile = Boolean(state.authSession?.access && state.authSession.user);
+  const apiError = localApiError || externalApiError;
 
   const errors = useMemo<RegisterErrors>(() => {
-    const nextErrors: RegisterErrors = {};
+    const nextErrors: RegisterErrors = validateBasicInfo(state.basicInfo);
 
-    if (!state.basicInfo.fullName.trim()) {
-      nextErrors.fullName = 'Full name is required';
-    }
-
-    if (!state.basicInfo.email.trim()) {
-      nextErrors.email = 'Email is required';
-    } else if (!/^\S+@\S+\.\S+$/.test(state.basicInfo.email.trim())) {
-      nextErrors.email = 'Enter a valid email';
-    }
-
-    if (!password.trim()) {
+    if (!isCreatingMissingProfile && !password.trim()) {
       nextErrors.password = 'Password is required';
     }
 
@@ -45,50 +41,65 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
     }
 
     return nextErrors;
-  }, [apiError, password, state.basicInfo.email, state.basicInfo.fullName]);
+  }, [apiError, isCreatingMissingProfile, password, state.basicInfo]);
 
   const canContinue = Object.keys(errors).filter((key) => key !== 'api').length === 0 && !loading;
 
   const update = (field: BasicInfoField) => (value: string) => {
-    setApiError('');
+    setLocalApiError('');
+    onClearApiError?.();
     dispatch({ type: 'UPDATE_BASIC_INFO', field, value });
   };
 
   const submit = async () => {
     setSubmitted(true);
-    setApiError('');
+    setLocalApiError('');
+    onClearApiError?.();
 
     if (!canContinue) {
       return;
     }
 
-    const payload = {
-      email: state.basicInfo.email.trim(),
-      password,
-      name: state.basicInfo.fullName.trim(),
-    };
-
     try {
       setLoading(true);
+      let session: AuthSession;
 
-      const data = await registerStudent(payload);
+      if (isCreatingMissingProfile && state.authSession) {
+        session = state.authSession;
+      } else {
+        const data = await registerStudent({
+          email: state.basicInfo.email.trim(),
+          password,
+          name: state.basicInfo.fullName.trim(),
+        });
 
-      if (!data.access || !data.user) {
-        throw new Error('Registration succeeded, but the server did not return an auth session.');
-      }
+        const access = getAccessToken(data);
 
-      dispatch({
-        type: 'SET_AUTH_SESSION',
-        session: {
-          access: data.access,
-          refresh: data.refresh,
+        if (!access || !data.user) {
+          throw new Error('Registration succeeded, but the server did not return an auth session.');
+        }
+
+        session = {
+          access,
+          refresh: getRefreshToken(data),
           user: data.user,
           mustEnrollTotp: Boolean(data.must_enroll_totp),
-        },
-      });
-      onContinue();
+        };
+      }
+
+      if (needsTotpSetup(session)) {
+        dispatch({ type: 'SET_AUTH_SESSION', session });
+        onContinue(session);
+        return;
+      }
+
+      await createStudentProfile(session, state.basicInfo);
+      const nextSession = markProfileCreated(session);
+
+      dispatch({ type: 'SET_AUTH_SESSION', session: nextSession });
+      onContinue(nextSession);
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : 'Unable to create account');
+      setLocalApiError(error instanceof Error ? error.message : 'Unable to create profile');
     } finally {
       setLoading(false);
     }
@@ -97,12 +108,12 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
   const shownErrors = submitted ? errors : {};
 
   return (
-    <ScreenShell footer={<PrimaryButton label="Continue" onPress={submit} disabled={!canContinue} loading={loading} />}>
+    <ScreenShell footer={<PrimaryButton label={isCreatingMissingProfile ? 'Create profile' : 'Continue'} onPress={submit} disabled={loading} loading={loading} />}>
       <Text style={styles.title}>Tell us who you are</Text>
       <Text style={styles.subhead}>A few details help your agent understand your background and what you want next.</Text>
 
       <View style={styles.form}>
-        <SectionLabel>Register</SectionLabel>
+        <SectionLabel>{isCreatingMissingProfile ? 'Profile details' : 'Register'}</SectionLabel>
         <TextField label="Full name" value={state.basicInfo.fullName} onChangeText={update('fullName')} error={shownErrors.fullName} />
         <TextField
           label="Email"
@@ -112,11 +123,9 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
           autoCapitalize="none"
           error={shownErrors.email}
         />
-        <TextField label="Password" value={password} onChangeText={setPassword} secureTextEntry error={shownErrors.password} />
-        {shownErrors.api ? <Text style={styles.errorText}>{shownErrors.api}</Text> : null}
-
-
-        {/*
+        {!isCreatingMissingProfile ? (
+          <TextField label="Password" value={password} onChangeText={setPassword} secureTextEntry error={shownErrors.password} />
+        ) : null}
         <TextField
           label="Phone number"
           value={state.basicInfo.phone}
@@ -155,10 +164,10 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
           error={shownErrors.yearInCollege}
         />
         <TextField
-          label="Expected graduation"
+          label="Expected graduation year"
           value={state.basicInfo.expectedGraduation}
           onChangeText={update('expectedGraduation')}
-          placeholder="MM / YYYY"
+          placeholder="2026"
           error={shownErrors.expectedGraduation}
         />
 
@@ -181,10 +190,35 @@ export function BasicInfoScreen({ state, dispatch, onContinue }: BasicInfoScreen
           onChangeText={update('targetDegreeOrField')}
           placeholder="MS in Computer Science"
         />
-        */}
+        {shownErrors.api ? <Text style={styles.errorText}>{shownErrors.api}</Text> : null}
       </View>
     </ScreenShell>
   );
+}
+
+function needsTotpSetup(session: AuthSession): boolean {
+  return Boolean(session.mustEnrollTotp || session.totpRequired || session.mfaToken);
+}
+
+function markProfileCreated(session: AuthSession): AuthSession {
+  if (!session.user) {
+    return { ...session, profileCreated: true };
+  }
+
+  return {
+    ...session,
+    profileCreated: true,
+    user: {
+      ...session.user,
+      onboarding: {
+        profile_exists: true,
+        resume_uploaded: Boolean(session.user.onboarding?.resume_uploaded),
+        github_connected: Boolean(session.user.onboarding?.github_connected),
+        linkedin_connected: Boolean(session.user.onboarding?.linkedin_connected),
+        setup_complete: Boolean(session.user.onboarding?.setup_complete),
+      },
+    },
+  };
 }
 
 const styles = StyleSheet.create({

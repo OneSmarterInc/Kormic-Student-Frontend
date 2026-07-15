@@ -15,7 +15,7 @@ interface LivenessScreenProps {
 }
 
 export function LivenessScreen({ state, services, dispatch, onContinue }: LivenessScreenProps) {
-  const [guide, setGuide] = useState('Center your face in the frame');
+  const [guide, setGuide] = useState('The live camera verification is not enabled in this build.');
 
   const start = async () => {
     dispatch({ type: 'SET_LIVENESS', status: 'capturing' });
@@ -43,8 +43,8 @@ export function LivenessScreen({ state, services, dispatch, onContinue }: Livene
           <View style={styles.check}>
             <Text style={styles.checkText}>OK</Text>
           </View>
-          <Text style={styles.title}>You're verified</Text>
-          <Text style={styles.subhead}>Confirmed as a real person. That's the hard part done.</Text>
+          <Text style={styles.title}>Identity check ready</Text>
+          <Text style={styles.subhead}>A real liveness provider must confirm this before we mark anyone verified.</Text>
         </>
       );
     }
@@ -68,9 +68,8 @@ export function LivenessScreen({ state, services, dispatch, onContinue }: Livene
         </View>
         <Text style={styles.title}>Let's confirm it's really you</Text>
         <Text style={styles.subhead}>
-          A quick camera check confirms you're a real person. It's what lets universities trust your profile.
+          Live camera verification is being integrated separately, so this step is not part of onboarding right now.
         </Text>
-        <Text style={styles.privacy}>Your check is private. How we handle it</Text>
       </>
     );
   };
@@ -80,9 +79,9 @@ export function LivenessScreen({ state, services, dispatch, onContinue }: Livene
       <PrimaryButton label="Continue" onPress={onContinue} />
     ) : (
       <PrimaryButton
-        label={state.livenessStatus === 'retry' ? 'Try again' : 'Start check'}
+        label="Continue without liveness"
         onPress={start}
-        disabled={state.livenessStatus === 'capturing'}
+        disabled
         loading={state.livenessStatus === 'capturing'}
       />
     );
