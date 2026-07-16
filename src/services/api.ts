@@ -144,6 +144,34 @@ export interface AriaChatResponse {
   message?: string;
 }
 
+export interface UniversityChatResponse {
+  agent?: string;
+  university?: string;
+  student_id?: string;
+  reply?: string;
+  pending?: boolean;
+  query_id?: string | number | null;
+  confidence?: number | null;
+  message?: string;
+}
+
+export interface UniversityHistoryMessage {
+  sender?: 'user' | 'assistant' | string;
+  content?: string;
+  created_at?: string;
+  meta?: {
+    pending?: boolean;
+    query_id?: string | number | null;
+    confidence?: number | null;
+    [key: string]: unknown;
+  };
+}
+
+export interface UniversityChatHistoryResponse {
+  count?: number;
+  messages?: UniversityHistoryMessage[];
+}
+
 export interface GithubConnectResponse {
   authorize_url: string;
 }
@@ -157,6 +185,7 @@ export interface GithubStatusResponse {
 export interface GithubAnalysisResponse {
   status?: string;
   student_id?: string;
+  github_username?: string;
   skills_added?: string[];
   github_result?: Record<string, unknown>;
   message?: string;
@@ -167,7 +196,10 @@ export interface GithubHistoryResponse {
   count?: number;
   analyses?: Array<{
     github_url?: string;
+    github_username?: string;
     result?: Record<string, unknown>;
+    github_result?: Record<string, unknown>;
+    skills_added?: string[];
     created_at?: string;
   }>;
 }
@@ -855,5 +887,30 @@ export function getAriaHistory(session: AuthSession) {
       headers: authHeaders(accessToken),
     }),
     'Unable to load Aria chat history',
+  );
+}
+
+export function chatWithUniversityAgent(session: AuthSession, universityId: string, message: string) {
+  return requestWithSession<UniversityChatResponse>(
+    session,
+    `/chat/university/${encodeURIComponent(universityId)}/`,
+    (accessToken) => ({
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ message }),
+    }),
+    'Unable to chat with university agent',
+  );
+}
+
+export function getUniversityAgentHistory(session: AuthSession, universityId: string) {
+  return requestWithSession<UniversityChatHistoryResponse>(
+    session,
+    `/chat/university/${encodeURIComponent(universityId)}/history/`,
+    (accessToken) => ({
+      method: 'GET',
+      headers: authHeaders(accessToken),
+    }),
+    'Unable to load university chat history',
   );
 }

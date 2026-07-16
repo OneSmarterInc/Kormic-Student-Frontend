@@ -16,6 +16,7 @@
     "@expo-google-fonts/fraunces": "^0.2.3",
     "@expo-google-fonts/inter": "^0.2.3",
     "@expo/metro-runtime": "~6.1.2",
+    "@react-native-community/datetimepicker": "8.4.4",
     "expo": "~54.0.35",
     "expo-dev-client": "~6.0.21",
     "expo-document-picker": "~14.0.8",
@@ -27,6 +28,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-element-dropdown": "^2.12.4",
     "react-native-nitro-image": "^0.15.1",
     "react-native-nitro-modules": "^0.36.1",
     "react-native-web": "^0.21.0"

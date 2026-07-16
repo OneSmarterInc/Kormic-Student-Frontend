@@ -6,14 +6,18 @@ import { SectionLabel } from '../components/SectionLabel';
 import { TextField } from '../components/TextField';
 import { AuthSession, LinkedInScreenshot } from '../models/onboarding';
 import { AriaBotScreen } from './AriaBotScreen';
+import { UniversityAgentScreen } from './UniversityAgentScreen';
 import {
   API_BASE_URL,
   analyzeGithub,
   deleteProfileImage,
   deleteResume,
   downloadResumeFile,
+  getGithubHistory,
   getLinkedInImage,
   getProfileImage,
+  GithubAnalysisResponse,
+  GithubHistoryResponse,
   LinkedInHistoryRecord,
   listLinkedInHistory,
   listStudentResumes,
@@ -123,7 +127,7 @@ interface ProfileScreenProps {
   onLogout?: () => void;
 }
 
-type ProfileSection = 'overview' | 'edit' | 'resumes' | 'github' | 'linkedin' | 'aria';
+type ProfileSection = 'overview' | 'edit' | 'resumes' | 'github' | 'linkedin' | 'aria' | 'universityAgent';
 
 const EXTRACTED_DATA_SECTIONS = [
   {
@@ -409,12 +413,15 @@ export function ProfileScreen({
   const technicalIntelligence = profile.technical_intelligence ?? {};
   const researchIntelligence = profile.research_intelligence ?? {};
   const skills = profile.technical_skills?.length ? profile.technical_skills : profile.skills;
-  const [section, setSection] = useState<ProfileSection>('overview');
+  const [section, setSection] = useState<ProfileSection>('aria');
   const [menuOpen, setMenuOpen] = useState(false);
   const [resumes, setResumes] = useState<ResumeRecord[]>([]);
   const [linkedinImages, setLinkedinImages] = useState<LinkedInHistoryRecord[]>([]);
   const [linkedinPreviews, setLinkedinPreviews] = useState<LinkedInScreenshot[]>([]);
   const [linkedinLoading, setLinkedinLoading] = useState(false);
+  const [githubAnalysis, setGithubAnalysis] = useState<GithubAnalysisResponse | undefined>();
+  const [githubHistory, setGithubHistory] = useState<GithubHistoryResponse['analyses']>([]);
+  const [githubLoading, setGithubLoading] = useState(false);
   const [profileImageUrl, setProfileImageUrl] = useState(getRenderableMediaUrl(profile.profile_image_url) ?? '');
   const [profileImageLoading, setProfileImageLoading] = useState(false);
   const [resumesLoading, setResumesLoading] = useState(false);
@@ -538,6 +545,31 @@ export function ProfileScreen({
   useEffect(() => {
     if (section === 'linkedin') {
       loadLinkedinImages();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, session?.access, session?.user?.student_id]);
+
+  const loadGithubHistory = async () => {
+    if (!session) {
+      setSectionError('Please sign in again to view GitHub details.');
+      return;
+    }
+
+    try {
+      setSectionError('');
+      setGithubLoading(true);
+      const data = await getGithubHistory(session);
+      setGithubHistory(data.analyses ?? []);
+    } catch (githubError) {
+      setSectionError(githubError instanceof Error ? githubError.message : 'Unable to load GitHub details');
+    } finally {
+      setGithubLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (section === 'github') {
+      loadGithubHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, session?.access, session?.user?.student_id]);
@@ -718,7 +750,9 @@ export function ProfileScreen({
     try {
       setActionLoading(true);
       setSectionError('');
-      await analyzeGithub(session);
+      const result = await analyzeGithub(session);
+      setGithubAnalysis(result);
+      await loadGithubHistory();
       await onProfileChanged?.();
     } catch (githubError) {
       setSectionError(githubError instanceof Error ? githubError.message : 'Unable to analyze GitHub');
@@ -836,24 +870,32 @@ export function ProfileScreen({
           ) : null}
 
           {section === 'github' ? (
-            <SourceEditor
-              title="GitHub"
-              description={
-                profile.github
-                  ? 'Run a fresh analysis on your connected GitHub account.'
-                  : 'Connect GitHub with OAuth before running analysis.'
-              }
-              value=""
-              onChange={() => undefined}
-              primaryLabel="Save"
-              secondaryLabel="Analyze GitHub"
-              showUrlField={false}
-              showPrimaryAction={false}
-              disabled={actionLoading}
-              error={sectionError}
-              onPrimary={() => undefined}
-              onSecondary={runGithubAnalysis}
-            />
+            <View style={styles.form}>
+              <SourceEditor
+                title="GitHub"
+                description={
+                  profile.github
+                    ? 'Run a fresh analysis on your connected GitHub account.'
+                    : 'Connect GitHub with OAuth before running analysis.'
+                }
+                value=""
+                onChange={() => undefined}
+                primaryLabel="Save"
+                secondaryLabel="Analyze GitHub"
+                showUrlField={false}
+                showPrimaryAction={false}
+                disabled={actionLoading}
+                error={sectionError}
+                onPrimary={() => undefined}
+                onSecondary={runGithubAnalysis}
+              />
+              <GithubAnalysisDetails
+                loading={githubLoading}
+                currentAnalysis={githubAnalysis}
+                history={githubHistory}
+                onRefresh={loadGithubHistory}
+              />
+            </View>
           ) : null}
 
           {section === 'linkedin' ? (
@@ -890,6 +932,8 @@ export function ProfileScreen({
           ) : null}
 
           {section === 'aria' ? <AriaBotScreen session={session} /> : null}
+
+          {/* {section === 'universityAgent' ? <UniversityAgentScreen session={session} /> : null} */}
 
           {section === 'overview' ? (
             <>
@@ -1259,6 +1303,8 @@ function sectionTitle(section: ProfileSection) {
       return 'LinkedIn';
     case 'aria':
       return 'Chat with Aria';
+    case 'universityAgent':
+      return 'University agent';
   }
 }
 
@@ -1270,12 +1316,14 @@ function ProfileMenu({
   onSelect: (section: ProfileSection) => void;
 }) {
   const items: Array<{ key: ProfileSection; label: string }> = [
+    { key: 'aria', label: 'Chat with Aria' },
     { key: 'overview', label: 'Overview' },
     { key: 'edit', label: 'Edit Profile' },
     { key: 'resumes', label: 'Resume update/view' },
     { key: 'github', label: 'GitHub' },
     { key: 'linkedin', label: 'LinkedIn images' },
-    { key: 'aria', label: 'Chat with Aria' },
+    
+    // { key: 'universityAgent', label: 'University agent' },
   ];
 
   return (
@@ -1604,6 +1652,164 @@ function SourceEditor({
       </InfoCard>
     </View>
   );
+}
+
+function GithubAnalysisDetails({
+  loading,
+  currentAnalysis,
+  history = [],
+  onRefresh,
+}: {
+  loading: boolean;
+  currentAnalysis?: GithubAnalysisResponse;
+  history?: NonNullable<GithubHistoryResponse['analyses']>;
+  onRefresh: () => void;
+}) {
+  const latestHistory = history[0];
+  const result =
+    currentAnalysis?.github_result ??
+    latestHistory?.github_result ??
+    latestHistory?.result ??
+    {};
+  const resultRecord = getRecord(result) ?? {};
+  const username =
+    currentAnalysis?.github_username ??
+    latestHistory?.github_username ??
+    getString(resultRecord.github_username) ??
+    getGithubHandleFromUrl(latestHistory?.github_url);
+  const skillsAdded =
+    currentAnalysis?.skills_added ??
+    latestHistory?.skills_added ??
+    getStringArray(resultRecord.skills_added) ??
+    [];
+  const languages =
+    getGithubItemLabels(resultRecord.languages) ??
+    getGithubItemLabels(resultRecord.language_breakdown) ??
+    [];
+  const frameworks =
+    getGithubItemLabels(resultRecord.frameworks_and_tools) ??
+    getGithubItemLabels(resultRecord.frameworks) ??
+    getGithubItemLabels(resultRecord.tools) ??
+    [];
+  const repositories = getGithubItemLabels(
+    resultRecord.repositories ??
+      resultRecord.top_repositories ??
+      resultRecord.projects ??
+      resultRecord.notable_projects,
+  ) ?? [];
+  const summary =
+    getString(resultRecord.summary) ??
+    getString(resultRecord.profile_summary) ??
+    getString(resultRecord.technical_summary) ??
+    getString(resultRecord.assessment);
+
+  return (
+    <View style={styles.githubDetails}>
+      <View style={styles.linkedinHistoryHeader}>
+        <View style={styles.linkedinHistoryTitleWrap}>
+          <Text style={styles.cardTitle}>GitHub details</Text>
+          <Text style={styles.metaText}>Latest connected-account analysis and history.</Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onRefresh}
+          disabled={loading}
+          style={[styles.smallButton, loading && styles.disabledButton]}
+        >
+          {loading ? (
+            <ActivityIndicator color={colors.offWhite} size="small" />
+          ) : (
+            <Text style={styles.smallButtonText}>Refresh</Text>
+          )}
+        </Pressable>
+      </View>
+
+      {loading && !currentAnalysis && history.length === 0 ? <ActivityIndicator color={colors.coral} /> : null}
+
+      {!loading && !currentAnalysis && history.length === 0 ? (
+        <Text style={styles.emptyText}>No GitHub analysis found yet. Run Analyze GitHub to fetch details.</Text>
+      ) : null}
+
+      {currentAnalysis || history.length > 0 ? (
+        <InfoCard>
+          <FieldRow label="GitHub username" value={username ? `@${username}` : undefined} />
+          <FieldRow label="Primary language" value={getString(resultRecord.primary_language)} />
+          <FieldRow label="Latest run" value={latestHistory?.created_at ? formatDate(latestHistory.created_at) : undefined} />
+
+          <Text style={styles.extractedSectionTitle}>Languages</Text>
+          <ChipGroup items={languages} compact />
+
+          <Text style={styles.extractedSectionTitle}>Frameworks and tools</Text>
+          <ChipGroup items={frameworks} compact />
+
+          <MiniList title="Repositories / projects" items={repositories} />
+
+          {summary ? (
+            <View style={styles.githubSummary}>
+              <Text style={styles.extractedSectionTitle}>Summary</Text>
+              <Text style={styles.bodyText}>{summary}</Text>
+            </View>
+          ) : null}
+        </InfoCard>
+      ) : null}
+    </View>
+  );
+}
+
+function getString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function getGithubHandleFromUrl(value: unknown) {
+  const url = getString(value);
+  if (!url) {
+    return undefined;
+  }
+
+  return url.replace(/\/$/, '').split('/').filter(Boolean).pop();
+}
+
+function getGithubItemLabels(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const labels = value
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item;
+      }
+
+      const record = getRecord(item);
+      if (!record) {
+        return '';
+      }
+
+      const name =
+        getString(record.name) ??
+        getString(record.repository) ??
+        getString(record.repo) ??
+        getString(record.title) ??
+        getString(record.package);
+      const percent =
+        typeof record.percent === 'number'
+          ? `${record.percent}%`
+          : typeof record.percentage === 'number'
+            ? `${record.percentage}%`
+            : undefined;
+      const level = getString(record.level);
+      const language = getString(record.language) ?? getString(record.primary_language);
+      const description = getString(record.description) ?? getString(record.summary);
+
+      if (percent || level) {
+        return [name, percent, level].filter(Boolean).join(' • ');
+      }
+
+      return [name, language, description].filter(Boolean).join(' - ');
+    })
+    .filter(Boolean);
+
+  return labels.length ? labels : undefined;
 }
 
 function LinkedinImageHistory({
@@ -2535,6 +2741,13 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.45,
+  },
+  githubDetails: {
+    gap: 12,
+  },
+  githubSummary: {
+    gap: 6,
+    marginTop: 4,
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.045)',
