@@ -52,8 +52,8 @@ export function CvScreen({ state, services, dispatch, onContinue }: CvScreenProp
         <Text style={styles.subhead}>This fills in the rest of your story. Your agent reads it to understand your full background.</Text>
         {state.cvFile ? (
           <View style={styles.fileCard}>
-            <View style={styles.fileIcon}>
-              <Text style={styles.fileIconText}>PDF</Text>
+            <View style={styles.fileBadge}>
+              <Text style={styles.fileBadgeText}>{state.cvFile.type.toUpperCase()}</Text>
             </View>
             <View style={styles.fileCopy}>
               <Text style={styles.fileName}>{state.cvFile.name}</Text>
@@ -80,19 +80,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   glyph: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    borderColor: colors.coral,
-    borderWidth: 1,
-    backgroundColor: 'rgba(255,107,74,0.14)',
     alignItems: 'center',
+    backgroundColor: 'rgba(255,107,74,0.14)',
+    borderColor: 'rgba(255,107,74,0.44)',
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 48,
     justifyContent: 'center',
-    marginBottom: 22,
+    marginBottom: 18,
+    width: 48,
   },
   glyphText: {
     color: colors.coral,
     fontFamily: fonts.bodyMedium,
+    fontSize: 16,
+    textTransform: 'uppercase',
   },
   title: type.title,
   subhead: {
@@ -123,21 +125,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panelInk,
     padding: 14,
   },
-  fileIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,107,74,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fileIconText: {
-    color: colors.coral,
-    fontFamily: fonts.bodyMedium,
-    fontSize: 11,
-  },
   fileCopy: {
     flex: 1,
+  },
+  fileBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,107,74,0.15)',
+    borderColor: 'rgba(255,107,74,0.34)',
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  fileBadgeText: {
+    color: colors.coral,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 10,
+    textTransform: 'uppercase',
   },
   fileName: {
     color: colors.offWhite,

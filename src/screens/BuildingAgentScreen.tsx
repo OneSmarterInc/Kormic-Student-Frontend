@@ -43,9 +43,6 @@ export function BuildingAgentScreen({ services, buildStage, dispatch, onComplete
     <ScreenShell scroll={false}>
       <View style={styles.content}>
         <KormicWordmark />
-        <View style={styles.orbit}>
-          <View style={styles.core} />
-        </View>
         <Text style={styles.title}>Building your agent</Text>
         <Text accessibilityLiveRegion="polite" style={styles.status}>
           {services.buildAgent.stages[buildStage] ?? services.buildAgent.stages[0]}
@@ -61,27 +58,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  orbit: {
-    width: 124,
-    height: 124,
-    borderRadius: 62,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 28,
-  },
-  core: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.coral,
-  },
   title: {
     ...type.title,
     fontSize: 25,
     lineHeight: 30,
     textAlign: 'center',
+    marginTop: 28,
   },
   status: {
     color: colors.textSoft,

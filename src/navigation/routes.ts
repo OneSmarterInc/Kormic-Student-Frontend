@@ -13,6 +13,7 @@ export const routeTitles: Record<OnboardingRoute, string> = {
   BuildingAgent: 'Building',
   AgentLive: 'Agent live',
   Profile: 'Profile',
+  BotScreen: 'Agent chat',
 };
 
 export function getPreviousRoute(route: OnboardingRoute): OnboardingRoute | undefined {
@@ -22,7 +23,9 @@ export function getPreviousRoute(route: OnboardingRoute): OnboardingRoute | unde
   if (route === 'Profile') {
     return 'AgentLive';
   }
-
+  if (route === 'BotScreen') {
+    return 'Profile';
+  }
   const index = orderedRoutes.indexOf(route);
   return index > 0 ? orderedRoutes[index - 1] : undefined;
 }
@@ -63,6 +66,8 @@ export function canAdvanceFrom(route: OnboardingRoute, state: OnboardingState): 
     case 'AgentLive':
       return false;
     case 'Profile':
+      return false;
+    case 'BotScreen':
       return false;
   }
 }

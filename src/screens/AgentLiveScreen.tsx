@@ -21,8 +21,8 @@ export function AgentLiveScreen({ state, onViewProfile = () => undefined, loadin
       footer={<PrimaryButton label="View My Complete Profile" onPress={onViewProfile} loading={loadingProfile} />}
     >
       <View style={styles.content}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>OK</Text>
+        <View style={styles.glyph}>
+          <Text style={styles.glyphText}>OK</Text>
         </View>
         <Text style={styles.title}>
           Your agent is <Text style={styles.emphasis}>live.</Text>
@@ -55,20 +55,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badge: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 2,
-    borderColor: colors.coral,
-    backgroundColor: 'rgba(255,107,74,0.16)',
+  glyph: {
     alignItems: 'center',
+    borderColor: colors.coral,
+    borderRadius: 50,
+    borderWidth: 2,
+    height: 80,
     justifyContent: 'center',
     marginBottom: 24,
+    width: 80,
   },
-  badgeText: {
+  glyphText: {
     color: colors.coral,
     fontFamily: fonts.bodyMedium,
+    fontSize: 18,
   },
   title: {
     ...type.title,

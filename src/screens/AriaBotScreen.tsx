@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AuthSession } from '../models/onboarding';
-import { AriaConversationMessage, AriaHistoryMessage, chatWithAria, getAriaHistory } from '../services/api';
+import { AriaHistoryMessage, chatWithAria, getAriaHistory } from '../services/api';
 import { colors, fonts } from '../theme/tokens';
 
 type ChatMessage = {
@@ -24,16 +24,25 @@ type ThreadGroup = {
 };
 
 const SUGGESTED_PROMPT = 'How is my profile? What should I improve?';
-const WELCOME_MESSAGE: ChatMessage = {
+const SUGGESTED_PROMPTS = [
+  SUGGESTED_PROMPT,
+  'Which profile gaps should I fix first?',
+  'How can I improve my university fit?',
+];
+const DEFAULT_AGENT_NAME = 'Aria';
+const getWelcomeMessage = (agentName: string): ChatMessage => ({
   id: 'welcome',
   role: 'aria',
-  text: 'Hi, I am Aria. Ask me about your profile, resumes, GitHub, LinkedIn, or what to improve next.',
-};
+  text: `Hi, I am ${agentName}. Ask me about your profile, resumes, GitHub, LinkedIn, or what to improve next.`,
+});
 const ariaMessageCache = new Map<string, ChatMessage[]>();
 
 export function AriaBotScreen({ session }: { session?: AuthSession }) {
   const cachedMessages = getCachedAriaMessages(session);
-  const [messages, setMessages] = useState<ChatMessage[]>(cachedMessages.length > 0 ? cachedMessages : [WELCOME_MESSAGE]);
+  const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME);
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    cachedMessages.length > 0 ? cachedMessages : [getWelcomeMessage(DEFAULT_AGENT_NAME)],
+  );
   const [historyMessages, setHistoryMessages] = useState<ChatMessage[]>(cachedMessages);
   const [selectedThreadId, setSelectedThreadId] = useState<string | undefined>();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -44,7 +53,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
   const historyThreads = useMemo(() => buildAriaThreads(historyMessages), [historyMessages]);
   const groupedThreads = useMemo(() => groupThreadsByDate(historyThreads), [historyThreads]);
 
-  const loadHistory = async () => {
+  const loadHistory = async (nextAgentName = agentName) => {
     if (!session) {
       return;
     }
@@ -57,16 +66,24 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
       setHistoryMessages(historyMessages);
       cacheAriaMessages(session, historyMessages);
       setSelectedThreadId(undefined);
-      setMessages(historyMessages.length > 0 ? historyMessages : [WELCOME_MESSAGE]);
+      setMessages(historyMessages.length > 0 ? historyMessages : [getWelcomeMessage(nextAgentName)]);
     } catch (historyError) {
-      setError(historyError instanceof Error ? historyError.message : 'Unable to load Aria chat history');
+      setError(historyError instanceof Error ? historyError.message : 'Unable to load agent chat history');
     } finally {
       setHistoryLoading(false);
     }
   };
 
   useEffect(() => {
-    loadHistory();
+    const loadAgent = async () => {
+      setAgentName(DEFAULT_AGENT_NAME);
+      setMessages((current) =>
+        current.length === 1 && current[0]?.id === 'welcome' ? [getWelcomeMessage(DEFAULT_AGENT_NAME)] : current,
+      );
+      await loadHistory(DEFAULT_AGENT_NAME);
+    };
+
+    loadAgent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access, session?.user?.student_id]);
 
@@ -77,7 +94,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
     }
 
     if (!session) {
-      setError('Please sign in again to chat with Aria.');
+      setError(`Please sign in again to chat with ${agentName}.`);
       return;
     }
 
@@ -103,12 +120,14 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
       setSelectedThreadId(undefined);
       setDraft('');
 
-      const conversation = getAriaConversation(stripWelcomeMessage(messages));
-      const response = await chatWithAria(session, message, conversation);
+      const response = await chatWithAria(session, message);
+      if (response.agent?.trim()) {
+        setAgentName(response.agent.trim());
+      }
       const ariaMessage: ChatMessage = {
         id: `aria-${Date.now()}`,
         role: 'aria',
-        text: response.reply || response.message || 'Aria did not return a reply.',
+        text: response.reply || response.message || `${response.agent || agentName} did not return a reply.`,
       };
       setMessages((current) => {
         const nextMessages = [...current, ariaMessage];
@@ -122,7 +141,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
       });
       await loadHistory();
     } catch (chatError) {
-      setError(chatError instanceof Error ? chatError.message : 'Unable to chat with Aria');
+      setError(chatError instanceof Error ? chatError.message : `Unable to chat with ${agentName}`);
     } finally {
       setLoading(false);
     }
@@ -130,95 +149,121 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
 
   return (
     <>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>Aria</Text>
-          <Text style={styles.subtitle}>Profile guidance assistant</Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setSidebarOpen((current) => !current)}
-          style={[styles.historyToggle, sidebarOpen && styles.historyToggleActive]}
-        >
-          <Text style={styles.historyToggleText}>{sidebarOpen ? 'Close' : 'History'}</Text>
-        </Pressable>
-      </View>
-      <View style={styles.container}>
-        {sidebarOpen ? (
-          <RecentChatSidebar
-            groupedThreads={groupedThreads}
-            historyLoading={historyLoading}
-            selectedThreadId={selectedThreadId}
-            onClose={() => setSidebarOpen(false)}
-            onRefresh={loadHistory}
-            onSelect={(thread) => {
-              setSelectedThreadId(thread.id);
-              setMessages(thread.messages);
-              setSidebarOpen(false);
-            }}
-          />
-        ) : null}
-
-        <ScrollView style={styles.messages} contentContainerStyle={styles.messageContent}>
-          {historyLoading ? (
-            <View style={[styles.bubble, styles.ariaBubble, styles.loadingBubble]}>
-              <ActivityIndicator color={colors.coral} size="small" />
-              <Text style={styles.loadingText}>Loading Aria history...</Text>
-            </View>
-          ) : null}
-          {messages.map((message) => (
-            <View
-              key={message.id}
-              style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.ariaBubble]}
-            >
-              <Text style={styles.bubbleLabel}>{message.role === 'user' ? 'You' : 'Aria'}</Text>
-              <Text style={styles.bubbleText}>{message.text}</Text>
-              {message.createdAt ? (
-                <Text style={styles.messageDate}>{formatChatDate(message.createdAt)}</Text>
-              ) : null}
-            </View>
-          ))}
-          {loading ? (
-            <View style={[styles.bubble, styles.ariaBubble, styles.loadingBubble]}>
-              <ActivityIndicator color={colors.coral} size="small" />
-              <Text style={styles.loadingText}>Aria is reading your profile...</Text>
-            </View>
-          ) : null}
-        </ScrollView>
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        <View style={styles.composer}>
-          {!draft.trim() ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setDraft(SUGGESTED_PROMPT)}
-              style={styles.suggestionChip}
-            >
-              <Text style={styles.suggestionText}>{SUGGESTED_PROMPT}</Text>
-            </Pressable>
-          ) : null}
-          <TextInput
-            accessibilityLabel="Message Aria"
-            multiline
-            onChangeText={setDraft}
-            placeholder="Ask Aria about your profile..."
-            placeholderTextColor="#777895"
-            style={styles.input}
-            value={draft}
-          />
+      <View style={styles.chatShell}>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>{agentName}</Text>
+          </View>
           <Pressable
             accessibilityRole="button"
-            disabled={loading || !draft.trim()}
-            onPress={sendMessage}
-            style={[styles.sendButton, (loading || !draft.trim()) && styles.disabledButton]}
+            onPress={() => setSidebarOpen((current) => !current)}
+            style={[styles.historyToggle, sidebarOpen && styles.historyToggleActive]}
           >
-            {loading ? (
-              <ActivityIndicator color="#1A0F0A" size="small" />
-            ) : (
-              <Text style={styles.sendText}>Send</Text>
-            )}
+            <Text style={styles.historyToggleText}>{sidebarOpen ? 'Close' : 'History'}</Text>
           </Pressable>
+        </View>
+
+        <View style={styles.container}>
+          {sidebarOpen ? (
+            <RecentChatSidebar
+              agentName={agentName}
+              groupedThreads={groupedThreads}
+              historyLoading={historyLoading}
+              selectedThreadId={selectedThreadId}
+              onClose={() => setSidebarOpen(false)}
+              onRefresh={loadHistory}
+              onSelect={(thread) => {
+                setSelectedThreadId(thread.id);
+                setMessages(thread.messages);
+                setSidebarOpen(false);
+              }}
+            />
+          ) : (
+            <>
+              <ScrollView style={styles.messages} contentContainerStyle={styles.messageContent}>
+                {historyLoading ? (
+                  <View style={styles.messageRow}>
+                    <View style={[styles.bubble, styles.ariaBubble, styles.loadingBubble]}>
+                      <ActivityIndicator color={colors.coral} size="small" />
+                      <Text style={styles.loadingText}>Loading {agentName} history...</Text>
+                    </View>
+                  </View>
+                ) : null}
+                {messages.map((message) => (
+                  <View
+                    key={message.id}
+                    style={[styles.messageRow, message.role === 'user' && styles.userMessageRow]}
+                  >
+                    <View
+                      style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.ariaBubble]}
+                    >
+                      <Text style={styles.bubbleLabel}>{message.role === 'user' ? 'You' : agentName}</Text>
+                      <FormattedMessageText text={message.text} formatBold={message.role === 'aria'} />
+                      {message.createdAt ? (
+                        <Text style={styles.messageDate}>{formatChatDate(message.createdAt)}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+                {loading ? (
+                  <View style={styles.messageRow}>
+                    <View style={[styles.bubble, styles.ariaBubble, styles.loadingBubble]}>
+                      <ActivityIndicator color={colors.coral} size="small" />
+                      <Text style={styles.loadingText}>{agentName} is reading your profile...</Text>
+                    </View>
+                  </View>
+                ) : null}
+              </ScrollView>
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+              <View style={styles.composer}>
+                {!draft.trim() ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.suggestionScroller}
+                    contentContainerStyle={styles.suggestionRow}
+                  >
+                    {SUGGESTED_PROMPTS.map((prompt) => (
+                      <Pressable
+                        key={prompt}
+                        accessibilityRole="button"
+                        onPress={() => setDraft(prompt)}
+                        style={styles.suggestionChip}
+                      >
+                        <Text style={styles.suggestionText}>{prompt}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                ) : null}
+                <View style={styles.composerBox}>
+                  <TextInput
+                    accessibilityLabel={`Message ${agentName}`}
+                    multiline
+                    onChangeText={setDraft}
+                    placeholder={`Message ${agentName}...`}
+                    placeholderTextColor="#777895"
+                    style={styles.input}
+                    value={draft}
+                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={loading || !draft.trim()}
+                    onPress={sendMessage}
+                    style={[styles.sendButton, (loading || !draft.trim()) && styles.disabledButton]}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#1A0F0A" size="small" />
+                    ) : (
+                      <Text style={styles.sendText}>Send</Text>
+                    )}
+                  </Pressable>
+                </View>
+                <Text style={styles.composerHint}>{agentName} uses your profile, resume, GitHub, and LinkedIn context.</Text>
+              </View>
+            </>
+          )}
         </View>
       </View>
     </>
@@ -226,6 +271,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
 }
 
 function RecentChatSidebar({
+  agentName,
   groupedThreads,
   historyLoading,
   selectedThreadId,
@@ -233,6 +279,7 @@ function RecentChatSidebar({
   onRefresh,
   onSelect,
 }: {
+  agentName: string;
   groupedThreads: ThreadGroup[];
   historyLoading: boolean;
   selectedThreadId?: string;
@@ -245,7 +292,6 @@ function RecentChatSidebar({
       <View style={styles.sidebarHeader}>
         <View>
           <Text style={styles.sidebarTitle}>Recent chats</Text>
-          <Text style={styles.sidebarCaption}>Today first, then yesterday and older chats.</Text>
         </View>
         <Pressable accessibilityRole="button" onPress={onClose} style={styles.sidebarIconButton}>
           <Text style={styles.sidebarIconText}>x</Text>
@@ -266,7 +312,7 @@ function RecentChatSidebar({
       </Pressable>
 
       {groupedThreads.length === 0 && !historyLoading ? (
-        <Text style={styles.emptyText}>No recent Aria chats yet.</Text>
+        <Text style={styles.emptyText}>No recent {agentName} chats yet.</Text>
       ) : null}
 
       {groupedThreads.map((group) => (
@@ -303,14 +349,49 @@ function normalizeAriaHistory(messages: AriaHistoryMessage[]): ChatMessage[] {
     }));
 }
 
-function getAriaConversation(messages: ChatMessage[]): AriaConversationMessage[] {
-  return messages
-    .filter((message) => message.text.trim())
-    .slice(-20)
-    .map((message) => ({
-      role: message.role === 'user' ? 'user' : 'assistant',
-      content: message.text,
-    }));
+function FormattedMessageText({ text, formatBold }: { text: string; formatBold: boolean }) {
+  const segments = formatBold ? getBoldSegments(text) : [{ text, bold: false }];
+
+  return (
+    <Text style={styles.bubbleText}>
+      {segments.map((segment, index) => (
+        <Text
+          key={`${segment.text}-${index}`}
+          style={segment.bold ? styles.boldText : undefined}
+        >
+          {segment.text}
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
+function getBoldSegments(text: string) {
+  const segments: Array<{ text: string; bold: boolean }> = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const start = text.indexOf('**', cursor);
+    if (start === -1) {
+      segments.push({ text: text.slice(cursor), bold: false });
+      break;
+    }
+
+    const end = text.indexOf('**', start + 2);
+    if (end === -1) {
+      segments.push({ text: text.slice(cursor), bold: false });
+      break;
+    }
+
+    if (start > cursor) {
+      segments.push({ text: text.slice(cursor, start), bold: false });
+    }
+
+    segments.push({ text: text.slice(start + 2, end), bold: true });
+    cursor = end + 2;
+  }
+
+  return segments.length ? segments : [{ text, bold: false }];
 }
 
 function getAriaCacheKey(session: AuthSession | undefined) {
@@ -330,7 +411,7 @@ function cacheAriaMessages(session: AuthSession | undefined, messages: ChatMessa
 }
 
 function stripWelcomeMessage(messages: ChatMessage[]) {
-  return messages.filter((message) => message.id !== WELCOME_MESSAGE.id);
+  return messages.filter((message) => message.id !== 'welcome');
 }
 
 function buildAriaThreads(messages: ChatMessage[]): ChatThread[] {
@@ -342,7 +423,7 @@ function buildAriaThreads(messages: ChatMessage[]): ChatThread[] {
     if (startsThread) {
       currentThread = {
         id: `thread-${message.createdAt ?? index}`,
-        title: message.role === 'user' ? getThreadTitle(message.text) : 'Aria update',
+        title: message.role === 'user' ? getThreadTitle(message.text) : 'Agent update',
         createdAt: message.createdAt,
         messages: [message],
       };
@@ -450,41 +531,49 @@ function formatChatTime(value: string) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: 'rgba(255,255,255,0.045)',
-    borderColor: 'rgba(255,255,255,0.11)',
+  chatShell: {
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderColor: 'rgba(255,255,255,0.10)',
     borderRadius: 8,
     borderWidth: 1,
-    gap: 14,
-    minHeight: 520,
-    padding: 14,
+    overflow: 'hidden',
+  },
+  container: {
+    backgroundColor: '#0F1026',
+    flexDirection: 'column',
+    gap: 0,
+    height: 620,
   },
   header: {
     alignItems: 'center',
-    backgroundColor: 'rgba(91,141,239,0.10)',
-    borderColor: 'rgba(91,141,239,0.18)',
-    borderRadius: 8,
-    borderWidth: 1,
+    backgroundColor: '#151735',
+    borderBottomColor: 'rgba(255,255,255,0.10)',
+    borderBottomWidth: 1,
     flexDirection: 'row',
-    gap: 4,
-    justifyContent: 'space-between',
-    padding: 12,
-    marginBottom: 12,
+    gap: 10,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   headerText: {
     flex: 1,
   },
   title: {
-    color: '#FF6B4A',
+    color: colors.offWhite,
     fontFamily: fonts.heading,
-    fontSize: 24,
-    lineHeight: 29,
+    fontSize: 21,
+    lineHeight: 25,
   },
   subtitle: {
     color: colors.textSoft,
     fontFamily: fonts.body,
     fontSize: 13,
     lineHeight: 18,
+  },
+  statusText: {
+    color: colors.textSoft,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
   },
   historyToggle: {
     alignItems: 'center',
@@ -493,7 +582,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 36,
+    minHeight: 30,
     paddingHorizontal: 12,
   },
   historyToggleActive: {
@@ -506,13 +595,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   sidebar: {
-    backgroundColor: '#141634',
-    borderColor: 'rgba(255,255,255,0.13)',
-    borderRadius: 8,
-    borderWidth: 1,
+    backgroundColor: '#151735',
+    borderBottomColor: 'rgba(255,255,255,0.10)',
+    borderBottomWidth: 1,
     gap: 12,
-    marginBottom: 12,
-    padding: 12,
+    padding: 14,
   },
   sidebarHeader: {
     alignItems: 'flex-start',
@@ -602,29 +689,36 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   messages: {
-    maxHeight: 360,
+    flex: 1,
   },
   messageContent: {
+    gap: 16,
+    padding: 16,
+  },
+  messageRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
     gap: 10,
-    paddingBottom: 2,
+  },
+  userMessageRow: {
+    justifyContent: 'flex-end',
   },
   bubble: {
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: 1,
     gap: 6,
-    padding: 11,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
   },
   ariaBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(91,141,239,0.10)',
-    borderColor: 'rgba(91,141,239,0.20)',
-    maxWidth: '92%',
+    backgroundColor: '#181A3A',
+    borderColor: 'rgba(255,255,255,0.11)',
+    maxWidth: '82%',
   },
   userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: 'rgba(255,107,74,0.16)',
-    borderColor: 'rgba(255,107,74,0.26)',
-    maxWidth: '92%',
+    backgroundColor: 'rgba(255,107,74,0.18)',
+    borderColor: 'rgba(255,107,74,0.32)',
+    maxWidth: '82%',
   },
   loadingBubble: {
     alignItems: 'center',
@@ -639,8 +733,11 @@ const styles = StyleSheet.create({
   bubbleText: {
     color: colors.offWhite,
     fontFamily: fonts.body,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  boldText: {
+    fontFamily: fonts.bodyMedium,
   },
   messageDate: {
     color: colors.textSoft,
@@ -658,18 +755,33 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 13,
     lineHeight: 19,
+    paddingHorizontal: 16,
   },
   composer: {
+    backgroundColor: '#151735',
+    borderTopColor: 'rgba(255,255,255,0.10)',
+    borderTopWidth: 1,
+    flexShrink: 0,
     gap: 10,
+    padding: 14,
+  },
+  suggestionScroller: {
+    maxHeight: 44,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 8,
   },
   suggestionChip: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,107,74,0.12)',
-    borderColor: 'rgba(255,107,74,0.28)',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderColor: 'rgba(255,255,255,0.13)',
     borderRadius: 999,
     borderWidth: 1,
+    flexShrink: 0,
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingVertical: 8,
   },
   suggestionText: {
     color: colors.offWhite,
@@ -677,18 +789,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  input: {
+  composerBox: {
+    alignItems: 'flex-end',
     backgroundColor: colors.panelInk,
-    borderColor: colors.line,
-    borderRadius: 8,
+    borderColor: 'rgba(255,255,255,0.13)',
+    borderRadius: 18,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 8,
+  },
+  input: {
+    backgroundColor: 'transparent',
     color: colors.offWhite,
+    flex: 1,
     fontFamily: fonts.body,
-    fontSize: 14,
-    lineHeight: 20,
-    minHeight: 86,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    fontSize: 15,
+    lineHeight: 22,
+    maxHeight: 118,
+    minHeight: 42,
+    paddingHorizontal: 8,
+    paddingVertical: 9,
     textAlignVertical: 'top',
   },
   sendButton: {
@@ -696,7 +817,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.coral,
     borderRadius: 999,
     justifyContent: 'center',
-    minHeight: 50,
+    minHeight: 42,
+    minWidth: 68,
+    paddingHorizontal: 14,
   },
   disabledButton: {
     opacity: 0.55,
@@ -704,6 +827,13 @@ const styles = StyleSheet.create({
   sendText: {
     color: '#1A0F0A',
     fontFamily: fonts.bodyMedium,
-    fontSize: 15,
+    fontSize: 14,
+  },
+  composerHint: {
+    color: colors.muted,
+    fontFamily: fonts.body,
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: 'center',
   },
 });

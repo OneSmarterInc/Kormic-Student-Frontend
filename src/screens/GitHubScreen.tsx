@@ -278,9 +278,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   glyph: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
+    width: 48,
+    height: 48,
+    borderRadius: 10,
     backgroundColor: '#1E1E2E',
     borderColor: colors.line,
     borderWidth: 1,
@@ -291,6 +291,7 @@ const styles = StyleSheet.create({
   glyphText: {
     color: colors.offWhite,
     fontFamily: fonts.bodyMedium,
+    fontSize: 16,
   },
   title: type.title,
   subhead: {

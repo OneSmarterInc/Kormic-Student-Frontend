@@ -144,32 +144,13 @@ export interface AriaChatResponse {
   message?: string;
 }
 
-export interface UniversityChatResponse {
+export interface AgentNameResponse {
+  agent_name?: string;
   agent?: string;
-  university?: string;
+  name?: string;
   student_id?: string;
-  reply?: string;
-  pending?: boolean;
-  query_id?: string | number | null;
-  confidence?: number | null;
+  detail?: string;
   message?: string;
-}
-
-export interface UniversityHistoryMessage {
-  sender?: 'user' | 'assistant' | string;
-  content?: string;
-  created_at?: string;
-  meta?: {
-    pending?: boolean;
-    query_id?: string | number | null;
-    confidence?: number | null;
-    [key: string]: unknown;
-  };
-}
-
-export interface UniversityChatHistoryResponse {
-  count?: number;
-  messages?: UniversityHistoryMessage[];
 }
 
 export interface GithubConnectResponse {
@@ -856,61 +837,39 @@ export function downloadResumeFile(session: AuthSession, resumeId: ResumeRecord[
   );
 }
 
-export function chatWithAria(
-  session: AuthSession,
-  message: string,
-  conversation: AriaConversationMessage[] = [],
-) {
+export function chatWithAria(session: AuthSession, message: string) {
   return requestWithSession<AriaChatResponse>(
     session,
-    '/chat/aria/',
+    '/chat/agent/',
     (accessToken) => ({
       method: 'POST',
       headers: authHeaders(accessToken),
-      body: JSON.stringify({
-        message,
-        conversation,
-        history: conversation,
-        messages: conversation,
-      }),
+      body: JSON.stringify({ message }),
     }),
-    'Unable to chat with Aria',
+    'Unable to chat with your agent',
   );
 }
 
 export function getAriaHistory(session: AuthSession) {
   return requestWithSession<AriaHistoryResponse>(
     session,
-    '/chat/aria/history/',
+    '/chat/agent/history/',
     (accessToken) => ({
       method: 'GET',
       headers: authHeaders(accessToken),
     }),
-    'Unable to load Aria chat history',
+    'Unable to load agent chat history',
   );
 }
 
-export function chatWithUniversityAgent(session: AuthSession, universityId: string, message: string) {
-  return requestWithSession<UniversityChatResponse>(
+export function getAgentName(session: AuthSession) {
+  return requestWithSession<AgentNameResponse>(
     session,
-    `/chat/university/${encodeURIComponent(universityId)}/`,
-    (accessToken) => ({
-      method: 'POST',
-      headers: authHeaders(accessToken),
-      body: JSON.stringify({ message }),
-    }),
-    'Unable to chat with university agent',
-  );
-}
-
-export function getUniversityAgentHistory(session: AuthSession, universityId: string) {
-  return requestWithSession<UniversityChatHistoryResponse>(
-    session,
-    `/chat/university/${encodeURIComponent(universityId)}/history/`,
+    '/profile/agent-name/',
     (accessToken) => ({
       method: 'GET',
       headers: authHeaders(accessToken),
     }),
-    'Unable to load university chat history',
+    'Unable to load agent name',
   );
 }

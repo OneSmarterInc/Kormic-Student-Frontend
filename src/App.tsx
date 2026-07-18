@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Fraunces_600SemiBold, Fraunces_600SemiBold_Italic, useFonts as useFraunces } from '@expo-google-fonts/fraunces';
 import { Inter_400Regular, Inter_600SemiBold, useFonts as useInter } from '@expo-google-fonts/inter';
 import { ProgressHeader } from './components/ProgressHeader';
 import { initialOnboardingState, OnboardingRoute } from './models/onboarding';
 import { canAdvanceFrom } from './navigation/routes';
 import { AgentLiveScreen } from './screens/AgentLiveScreen';
+import { AriaBotScreen } from './screens/AriaBotScreen';
 import { BasicInfoScreen } from './screens/BasicInfoScreen';
 import { BuildingAgentScreen } from './screens/BuildingAgentScreen';
 import { CvScreen } from './screens/CvScreen';
@@ -18,7 +19,7 @@ import { createStudentProfile, getMe, getStudentProfile, refreshAccessToken } fr
 import { mockOnboardingServices } from './services/onboardingServices';
 import { clearSavedTokens, getSavedTokens, saveAccessToken, saveTokens } from './services/tokenStorage';
 import { onboardingReducer } from './state/onboardingReducer';
-import { colors } from './theme/tokens';
+import { colors, fonts } from './theme/tokens';
 import TotpScreen from './screens/TotpSetupScreen';
 import { AuthSession } from './models/onboarding';
 import { isBasicInfoComplete } from './utils/validation';
@@ -96,6 +97,14 @@ function isTotpEnrollmentError(message: string) {
   return message.toLowerCase().includes('totp enrollment');
 }
 
+function isAuthRoute(route: OnboardingRoute) {
+  return route === 'Welcome' || route === 'Login' || route === 'BasicInfo' || route === 'SecuritySetup';
+}
+
+function hidesBotLauncher(route: OnboardingRoute) {
+  return route === 'CV' || route === 'GitHub' || route === 'AgentLive' || route === 'LinkedIn' || route === 'BuildingAgent';
+}
+
 export default function App() {
   const [frauncesLoaded] = useFraunces({
     Fraunces_600SemiBold,
@@ -111,10 +120,19 @@ export default function App() {
   const [profileError, setProfileError] = useState('');
   const [basicInfoApiError, setBasicInfoApiError] = useState('');
   const [restoringSession, setRestoringSession] = useState(true);
+  const [botReturnRoute, setBotReturnRoute] = useState<OnboardingRoute>('Profile');
+  const [profileAriaActive, setProfileAriaActive] = useState(false);
   const services = useMemo(() => mockOnboardingServices, []);
 
   const navigate = useCallback((route: OnboardingRoute) => dispatch({ type: 'NAVIGATE', route }), []);
   const back = useCallback(() => dispatch({ type: 'BACK' }), []);
+  const openBotScreen = useCallback(() => {
+    setBotReturnRoute(state.route === 'BotScreen' ? botReturnRoute : state.route);
+    navigate('BotScreen');
+  }, [botReturnRoute, navigate, state.route]);
+  const closeBotScreen = useCallback(() => {
+    navigate(botReturnRoute);
+  }, [botReturnRoute, navigate]);
   const next = useCallback(() => {
     const routedStep = getNextRouteAfterStep(state.route, state.authSession);
     if (routedStep) {
@@ -292,7 +310,7 @@ export default function App() {
       case 'Welcome':
         return <WelcomeScreen onStart={() => navigate('BasicInfo')} onLogin={() => navigate('Login')} />;
       case 'Login':
-        return <LoginScreen dispatch={dispatch} onContinue={(session) => (session ? continueAfterAuth(session) : navigate('SecuritySetup'))} />;
+        return <LoginScreen dispatch={dispatch} onContinue={(session) => (session ? continueAfterAuth(session) : navigate('SecuritySetup'))} onSignUp={()=> navigate('Welcome')} />;
       case 'BasicInfo':
         return (
           <BasicInfoScreen
@@ -340,17 +358,62 @@ export default function App() {
             onRetry={viewProfile}
             onProfileChanged={handleProfileChanged}
             onLogout={logout}
+            onAriaSectionActiveChange={setProfileAriaActive}
           />
         );
+      case 'BotScreen':
+        return <BotScreen session={state.authSession} onBack={closeBotScreen} />;
     }
   })();
+
+  const showBotLauncher =
+    Boolean(state.authSession?.access) &&
+    !isAuthRoute(state.route) &&
+    !hidesBotLauncher(state.route) &&
+    state.route !== 'BotScreen' &&
+    !(state.route === 'Profile' && profileAriaActive);
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={colors.ink} />
       <ProgressHeader route={state.route} onBack={back} />
       {content}
+      {showBotLauncher ? <FloatingBotLauncher onPress={openBotScreen} /> : null}
     </View>
+  );
+}
+
+function BotScreen({ session, onBack }: { session?: AuthSession; onBack: () => void }) {
+  return (
+    <View style={styles.botScreen}>
+      <View style={styles.botTopBar}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          onPress={onBack}
+          style={styles.botBackButton}
+        >
+          <Text style={styles.botBackText}>{'<'}</Text>
+        </Pressable>
+        <Text style={styles.botTitle}>Agent chat</Text>
+      </View>
+      <View style={styles.botContent}>
+        <AriaBotScreen session={session} />
+      </View>
+    </View>
+  );
+}
+
+function FloatingBotLauncher({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Open agent chat"
+      onPress={onPress}
+      style={styles.botLauncher}
+    >
+      <Text style={styles.botLauncherText}>A</Text>
+    </Pressable>
   );
 }
 
@@ -364,5 +427,64 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.ink,
+  },
+  botScreen: {
+    flex: 1,
+    backgroundColor: colors.ink,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
+  botTopBar: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    paddingBottom: 10,
+    paddingTop: 12,
+  },
+  botBackButton: {
+    alignItems: 'center',
+    borderColor: colors.line,
+    borderRadius: 22,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  botBackText: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 20,
+  },
+  botTitle: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 18,
+  },
+  botContent: {
+    flex: 1,
+  },
+  botLauncher: {
+    alignItems: 'center',
+    backgroundColor: colors.coral,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 28,
+    borderWidth: 1,
+    bottom: 22,
+    elevation: 8,
+    height: 56,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.26,
+    shadowRadius: 14,
+    width: 56,
+  },
+  botLauncherText: {
+    color: '#1A0F0A',
+    fontFamily: fonts.heading,
+    fontSize: 22,
+    lineHeight: 27,
   },
 });

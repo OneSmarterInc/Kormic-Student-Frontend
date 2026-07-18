@@ -6,7 +6,6 @@ import { SectionLabel } from '../components/SectionLabel';
 import { TextField } from '../components/TextField';
 import { AuthSession, LinkedInScreenshot } from '../models/onboarding';
 import { AriaBotScreen } from './AriaBotScreen';
-import { UniversityAgentScreen } from './UniversityAgentScreen';
 import {
   API_BASE_URL,
   analyzeGithub,
@@ -34,6 +33,17 @@ type Project = {
   title: string;
   description: string;
   technologies: string[];
+};
+
+type GithubRepository = {
+  name: string;
+  language?: string;
+  score?: string;
+  reason?: string;
+  url?: string;
+  stars?: string;
+  forks?: string;
+  topics: string[];
 };
 
 type IntelligenceBlock = {
@@ -125,9 +135,10 @@ interface ProfileScreenProps {
   onRetry?: () => void;
   onProfileChanged?: (profile?: StudentProfile) => void | Promise<void>;
   onLogout?: () => void;
+  onAriaSectionActiveChange?: (active: boolean) => void;
 }
 
-type ProfileSection = 'overview' | 'edit' | 'resumes' | 'github' | 'linkedin' | 'aria' | 'universityAgent';
+type ProfileSection = 'overview' | 'edit' | 'resumes' | 'github' | 'linkedin' | 'aria';
 
 const EXTRACTED_DATA_SECTIONS = [
   {
@@ -402,11 +413,9 @@ export function ProfileScreen({
   onRetry,
   onProfileChanged,
   onLogout,
+  onAriaSectionActiveChange,
 }: ProfileScreenProps) {
-  const profile = useMemo(
-    () => normalizeStudentProfile(loadedProfile ?? sampleProfile),
-    [loadedProfile],
-  );
+  const profile = useMemo(() => normalizeStudentProfile(loadedProfile ?? sampleProfile), [loadedProfile]);
   const overallProfile = profile.overall_profile ?? {};
   const profileCompleteness = profile.profile_completeness ?? {};
   const academicIntelligence = profile.academic_intelligence ?? {};
@@ -422,7 +431,9 @@ export function ProfileScreen({
   const [githubAnalysis, setGithubAnalysis] = useState<GithubAnalysisResponse | undefined>();
   const [githubHistory, setGithubHistory] = useState<GithubHistoryResponse['analyses']>([]);
   const [githubLoading, setGithubLoading] = useState(false);
-  const [profileImageUrl, setProfileImageUrl] = useState(getRenderableMediaUrl(profile.profile_image_url) ?? '');
+  const [profileImageUrl, setProfileImageUrl] = useState(
+    getRenderableMediaUrl(profile.profile_image_url) ?? '',
+  );
   const [profileImageLoading, setProfileImageLoading] = useState(false);
   const [resumesLoading, setResumesLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -445,6 +456,10 @@ export function ProfileScreen({
     english_score_text: profile.english_score_text || profile.english_score || '',
     budget: formatDraftValue(profile.budget),
   });
+
+  useEffect(() => {
+    onAriaSectionActiveChange?.(section === 'aria');
+  }, [onAriaSectionActiveChange, section]);
 
   useEffect(() => {
     setLinkedinUrl(profile.linkedin_url ?? '');
@@ -815,13 +830,13 @@ export function ProfileScreen({
         </Pressable>
 
         {menuOpen ? (
-           <></>
+          <></>
         ) : (
           <Text style={styles.topBarTitle}>
-          {section === 'overview' ? 'Complete profile' : sectionTitle(section)}
-        </Text>
+            {section === 'overview' ? 'Complete profile' : sectionTitle(section)}
+          </Text>
         )}
-       
+
         {onLogout ? (
           <Pressable
             accessibilityRole="button"
@@ -933,25 +948,27 @@ export function ProfileScreen({
 
           {section === 'aria' ? <AriaBotScreen session={session} /> : null}
 
-          {/* {section === 'universityAgent' ? <UniversityAgentScreen session={session} /> : null} */}
-
           {section === 'overview' ? (
             <>
-          <View style={styles.profileHero}>
-            <View style={styles.header}>
-              <ProfileAvatar name={profile.name || profile.email || ''} imageUrl={profileImageUrl} loading={profileImageLoading} />
-              <View style={styles.headerText}>
-                <Text style={styles.title}>{profile.name}</Text>
-                <Text style={styles.subhead}>{profile.email}</Text>
-                {/* <View style={styles.statusRow}>
+              <View style={styles.profileHero}>
+                <View style={styles.header}>
+                  <ProfileAvatar
+                    name={profile.name || profile.email || ''}
+                    imageUrl={profileImageUrl}
+                    loading={profileImageLoading}
+                  />
+                  <View style={styles.headerText}>
+                    <Text style={styles.title}>{profile.name}</Text>
+                    <Text style={styles.subhead}>{profile.email}</Text>
+                    {/* <View style={styles.statusRow}>
                   <Badge label={profile.verified ? 'Verified' : 'Not verified'} tone={profile.verified ? 'success' : 'warning'} />
                   <Badge label={profile.source} />
                 </View> */}
+                  </View>
+                </View>
               </View>
-            </View>
-          </View>
 
-          {/* <View style={styles.scoreGrid}>
+              {/* <View style={styles.scoreGrid}>
         <MetricCard label="Overall" value={`${profile.overall_profile_score ?? 0}/100`} caption={overallProfile.profile_level ?? 'Not scored'} />
         <MetricCard
           label="Complete"
@@ -965,32 +982,46 @@ export function ProfileScreen({
         />
       </View> */}
 
-          <View style={styles.form}>
-            <SectionLabel>Personal information</SectionLabel>
-            <InfoCard>
-              <FieldRow label="Student ID" value={profile.student_id} />
-              <FieldRow label="Country" value={profile.country} />
-              <FieldRow label="Institution" value={profile.institution} />
-              <FieldRow label="Branch" value={profile.major} />
-              <FieldRow label="Program" value={profile.program} />
-              <FieldRow label="Graduation year" value={formatValue(profile.graduation_year)} />
-            </InfoCard>
+              <View style={styles.form}>
+                <SectionLabel>Personal information</SectionLabel>
+                <InfoCard>
+                  
+                  <FieldRow label="Institution" value={profile.institution} />
+                  <FieldRow label="Branch" value={profile.major} />
+                  <FieldRow label="Program" value={profile.program} />
+                  <FieldRow label="Country" value={profile.country} />
+                  <FieldRow label="Graduation year" value={formatValue(profile.graduation_year)} />
+                </InfoCard>
 
-            <SectionLabel>Academic profile</SectionLabel>
-            <InfoCard>
-              <FieldRow
-                label="GPA"
-                value={profile.gpa !== null && profile.gpa !== undefined ? `${profile.gpa}/${profile.gpa_scale || 10}` : profile.gpa_text}
-              />
-              <FieldRow label="GRE Quant" value={formatValue(profile.gre_quant)} />
-              <FieldRow label="GRE Verbal" value={formatValue(profile.gre_verbal)} />
-              <FieldRow label="TOEFL" value={formatValue(profile.toefl)} />
-              <FieldRow label="IELTS" value={formatValue(profile.ielts)} />
-              <FieldRow label="English score" value={profile.english_score_text || profile.english_score} />
-              <FieldRow label="Budget" value={profile.budget !== null && profile.budget !== undefined ? `$${profile.budget}` : profile.budget_text} />
-            </InfoCard>
+                <SectionLabel>Academic profile</SectionLabel>
+                <InfoCard>
+                  <FieldRow
+                    label="GPA"
+                    value={
+                      profile.gpa !== null && profile.gpa !== undefined
+                        ? `${profile.gpa}/${profile.gpa_scale || 10}`
+                        : profile.gpa_text
+                    }
+                  />
+                  <FieldRow label="GRE Quant" value={formatValue(profile.gre_quant)} />
+                  <FieldRow label="GRE Verbal" value={formatValue(profile.gre_verbal)} />
+                  <FieldRow label="TOEFL" value={formatValue(profile.toefl)} />
+                  <FieldRow label="IELTS" value={formatValue(profile.ielts)} />
+                  <FieldRow
+                    label="English score"
+                    value={profile.english_score_text || profile.english_score}
+                  />
+                  <FieldRow
+                    label="Budget"
+                    value={
+                      profile.budget !== null && profile.budget !== undefined
+                        ? `$${profile.budget}`
+                        : profile.budget_text
+                    }
+                  />
+                </InfoCard>
 
-            {/* <SectionLabel>Profile intelligence</SectionLabel>
+                {/* <SectionLabel>Profile intelligence</SectionLabel>
         <IntelligenceCard
           title="Academic readiness"
           score={`${academicIntelligence.academic_score ?? 0}/100`}
@@ -1015,31 +1046,35 @@ export function ProfileScreen({
           recommendations={researchIntelligence.recommendations}
         /> */}
 
-            <SectionLabel>Skills</SectionLabel>
-            <ChipGroup items={skills} />
+                <SectionLabel>Skills</SectionLabel>
+                <ChipGroup items={skills} />
 
-            <SectionLabel>Target disciplines</SectionLabel>
-            <ChipGroup items={profile.disciplines} />
+                <SectionLabel>Target disciplines</SectionLabel>
+                <ChipGroup items={profile.disciplines} />
 
-            <SectionLabel>Projects</SectionLabel>
-            {(profile.projects ?? []).map((project) => (
-              <ProjectCard key={project.title} project={project} />
-            ))}
+                <SectionLabel>Projects</SectionLabel>
+                {(profile.projects ?? []).map((project) => (
+                  <ProjectCard key={project.title} project={project} />
+                ))}
 
-            <SectionLabel>Experience and research</SectionLabel>
-            <InfoCard>
-              <FieldRow
-                label="Work experience"
-                value={profile.work_months !== null && profile.work_months !== undefined ? `${profile.work_months} months` : ''}
-              />
-              <FieldRow label="Experience summary" value={profile.work_experience_summary} />
-              <FieldRow label="Research" value={profile.research} />
-              <FieldRow label="Publications" value={profile.publications_count} />
-              <FieldRow label="GitHub" value={profile.github} />
-              <FieldRow label="LinkedIn" value={profile.linkedin_url} />
-            </InfoCard>
+                <SectionLabel>Experience and research</SectionLabel>
+                <InfoCard>
+                  <FieldRow
+                    label="Work experience"
+                    value={
+                      profile.work_months !== null && profile.work_months !== undefined
+                        ? `${profile.work_months} months`
+                        : ''
+                    }
+                  />
+                  <FieldRow label="Experience summary" value={profile.work_experience_summary} />
+                  <FieldRow label="Research" value={profile.research} />
+                  <FieldRow label="Publications" value={profile.publications_count} />
+                  <FieldRow label="GitHub" value={profile.github} />
+                  <FieldRow label="LinkedIn" value={profile.linkedin_url} />
+                </InfoCard>
 
-            {/* <SectionLabel>Missing information</SectionLabel>
+                {/* <SectionLabel>Missing information</SectionLabel>
         <ChipGroup items={profileCompleteness.missing ?? profile.gaps} tone="warning" />
 
         <SectionLabel>Recommendations</SectionLabel>
@@ -1052,15 +1087,15 @@ export function ProfileScreen({
           ))}
         </InfoCard> */}
 
-            <SectionLabel>Notes</SectionLabel>
-            <InfoCard>
-              <Text style={styles.bodyText}>{profile.notes}</Text>
-              <View style={styles.metaRow}>
-                <Text style={styles.metaText}>Created: {profile.created_at}</Text>
-                <Text style={styles.metaText}>Updated: {profile.updated_at}</Text>
+                <SectionLabel>Notes</SectionLabel>
+                <InfoCard>
+                  <Text style={styles.bodyText}>{profile.notes}</Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaText}>Created: {profile.created_at}</Text>
+                    <Text style={styles.metaText}>Updated: {profile.updated_at}</Text>
+                  </View>
+                </InfoCard>
               </View>
-            </InfoCard>
-          </View>
             </>
           ) : null}
         </>
@@ -1104,7 +1139,11 @@ function ProfileAvatar({
 
   return (
     <View style={[styles.avatar, large && styles.avatarLarge]}>
-      {normalizedUrl ? <Image source={{ uri: normalizedUrl }} style={styles.avatarImage} resizeMode="cover" /> : <Text style={styles.avatarText}>{getInitials(name)}</Text>}
+      {normalizedUrl ? (
+        <Image source={{ uri: normalizedUrl }} style={styles.avatarImage} resizeMode="cover" />
+      ) : (
+        <Text style={styles.avatarText}>{getInitials(name)}</Text>
+      )}
       {loading ? (
         <View style={styles.avatarLoading}>
           <ActivityIndicator color={colors.coral} size="small" />
@@ -1132,8 +1171,10 @@ function normalizeStudentProfile(profile: StudentProfile | Record<string, unknow
   const meta = getRecord(wrapper.meta) || getRecord(rawProfile.meta) || {};
   const intelligence = getRecord(wrapper.intelligence) || {};
   const profileScoring = getRecord(wrapper.profile_scoring) || {};
-  const githubAssessment = getRecord(rawProfile.github_assessment) || getRecord(getRecord(evidence.github)?.result);
-  const linkedinProfile = getRecord(rawProfile.linkedin_profile) || getRecord(getRecord(evidence.linkedin)?.result);
+  const githubAssessment =
+    getRecord(rawProfile.github_assessment) || getRecord(getRecord(evidence.github)?.result);
+  const linkedinProfile =
+    getRecord(rawProfile.linkedin_profile) || getRecord(getRecord(evidence.linkedin)?.result);
   const manualProfile = getRecord(evidence.manual_profile_api);
   const publications = getArray(researchBlock.publications) || getArray(rawProfile.publications);
   const skills =
@@ -1172,19 +1213,35 @@ function normalizeStudentProfile(profile: StudentProfile | Record<string, unknow
     institution: rawProfile.institution ?? resumeEvidence?.institution ?? manualProfile?.institution ?? '',
     major: rawProfile.major ?? resumeEvidence?.major ?? manualProfile?.major ?? '',
     program: rawProfile.program ?? resumeEvidence?.program ?? '',
-    graduation_year: rawProfile.graduation_year ?? resumeEvidence?.graduation_year ?? manualProfile?.graduation_year ?? null,
+    graduation_year:
+      rawProfile.graduation_year ?? resumeEvidence?.graduation_year ?? manualProfile?.graduation_year ?? null,
     gpa: rawProfile.gpa ?? resumeEvidence?.gpa ?? manualProfile?.gpa ?? null,
     gpa_scale: rawProfile.gpa_scale ?? resumeEvidence?.gpa_scale ?? manualProfile?.gpa_scale ?? '',
     gpa_text: rawProfile.gpa_text ?? '',
-    gre_quant: rawProfile.gre_quant ?? testScores.gre_quant ?? resumeEvidence?.gre_quant ?? manualProfile?.gre_quant ?? null,
-    gre_verbal: rawProfile.gre_verbal ?? testScores.gre_verbal ?? resumeEvidence?.gre_verbal ?? manualProfile?.gre_verbal ?? null,
+    gre_quant:
+      rawProfile.gre_quant ??
+      testScores.gre_quant ??
+      resumeEvidence?.gre_quant ??
+      manualProfile?.gre_quant ??
+      null,
+    gre_verbal:
+      rawProfile.gre_verbal ??
+      testScores.gre_verbal ??
+      resumeEvidence?.gre_verbal ??
+      manualProfile?.gre_verbal ??
+      null,
     toefl: rawProfile.toefl ?? testScores.toefl ?? resumeEvidence?.toefl ?? manualProfile?.toefl ?? null,
     ielts: rawProfile.ielts ?? testScores.ielts ?? resumeEvidence?.ielts ?? manualProfile?.ielts ?? null,
     english_score_text: rawProfile.english_score_text ?? testScores.english_score_text ?? '',
     budget: rawProfile.budget ?? financials.budget ?? resumeEvidence?.budget ?? manualProfile?.budget ?? null,
     budget_text: rawProfile.budget_text ?? financials.budget_text ?? '',
     work_months: rawProfile.work_months ?? workExperience.work_months ?? resumeEvidence?.work_months ?? null,
-    github: rawProfile.github ?? rawProfile.github_url ?? manualProfile?.github ?? getRecord(evidence.github)?.github_url ?? '',
+    github:
+      rawProfile.github ??
+      rawProfile.github_url ??
+      manualProfile?.github ??
+      getRecord(evidence.github)?.github_url ??
+      '',
     linkedin_url: rawProfile.linkedin_url ?? linkedinProfile?.linkedin_url ?? '',
     notes: rawProfile.notes ?? wrapper.resume_notes ?? resumeEvidence?.notes ?? '',
     source: rawProfile.source ?? resumeEvidence?.source ?? '',
@@ -1194,16 +1251,27 @@ function normalizeStudentProfile(profile: StudentProfile | Record<string, unknow
     soft_skills: getStringArray(skillsBlock.soft_skills) || getStringArray(rawProfile.soft_skills) || [],
     projects,
     research: rawProfile.research ?? researchBlock.research ?? resumeEvidence?.research ?? '',
-    research_interests: getStringArray(researchBlock.research_interests) || getStringArray(rawProfile.research_interests) || [],
-    publications_count: rawProfile.publications_count ?? researchBlock.publications_count ?? publications?.length ?? resumeEvidence?.publications_count ?? 0,
+    research_interests:
+      getStringArray(researchBlock.research_interests) || getStringArray(rawProfile.research_interests) || [],
+    publications_count:
+      rawProfile.publications_count ??
+      researchBlock.publications_count ??
+      publications?.length ??
+      resumeEvidence?.publications_count ??
+      0,
     career_goals: getStringArray(careerBlock.career_goals) || getStringArray(rawProfile.career_goals) || [],
-    academic_intelligence: getRecord(intelligence.academic_intelligence) || getRecord(rawProfile.academic_intelligence) || {},
-    technical_intelligence: getRecord(intelligence.technical_intelligence) || getRecord(rawProfile.technical_intelligence) || {},
-    research_intelligence: getRecord(intelligence.research_intelligence) || getRecord(rawProfile.research_intelligence) || {},
-    behaviour_intelligence: getRecord(intelligence.behaviour_intelligence) || getRecord(rawProfile.behaviour_intelligence) || {},
+    academic_intelligence:
+      getRecord(intelligence.academic_intelligence) || getRecord(rawProfile.academic_intelligence) || {},
+    technical_intelligence:
+      getRecord(intelligence.technical_intelligence) || getRecord(rawProfile.technical_intelligence) || {},
+    research_intelligence:
+      getRecord(intelligence.research_intelligence) || getRecord(rawProfile.research_intelligence) || {},
+    behaviour_intelligence:
+      getRecord(intelligence.behaviour_intelligence) || getRecord(rawProfile.behaviour_intelligence) || {},
     overall_profile_score: profileScoring.overall_profile_score ?? rawProfile.overall_profile_score ?? 0,
     overall_profile: getRecord(profileScoring.overall_profile) || getRecord(rawProfile.overall_profile) || {},
-    profile_completeness: getRecord(profileScoring.profile_completeness) || getRecord(rawProfile.profile_completeness) || {},
+    profile_completeness:
+      getRecord(profileScoring.profile_completeness) || getRecord(rawProfile.profile_completeness) || {},
     disciplines,
     gaps: getStringArray(rawProfile.gaps) || getStringArray(resumeEvidence?.gaps) || [],
     parser_status: rawProfile.parser_status ?? meta.parser_status ?? resumeEvidence?.parser_status ?? '',
@@ -1229,7 +1297,9 @@ function formatDraftValue(value: string | number | null | undefined) {
 }
 
 function getRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function getArray(value: unknown): unknown[] | undefined {
@@ -1302,9 +1372,7 @@ function sectionTitle(section: ProfileSection) {
     case 'linkedin':
       return 'LinkedIn';
     case 'aria':
-      return 'Chat with Aria';
-    case 'universityAgent':
-      return 'University agent';
+      return 'Chat with Agent';
   }
 }
 
@@ -1316,14 +1384,12 @@ function ProfileMenu({
   onSelect: (section: ProfileSection) => void;
 }) {
   const items: Array<{ key: ProfileSection; label: string }> = [
-    { key: 'aria', label: 'Chat with Aria' },
+    { key: 'aria', label: 'Chat with Agent' },
     { key: 'overview', label: 'Overview' },
     { key: 'edit', label: 'Edit Profile' },
     { key: 'resumes', label: 'Resume update/view' },
     { key: 'github', label: 'GitHub' },
     { key: 'linkedin', label: 'LinkedIn images' },
-    
-    // { key: 'universityAgent', label: 'University agent' },
   ];
 
   return (
@@ -1393,13 +1459,33 @@ function EditProfileForm({
       <View style={styles.editBlock}>
         <View style={styles.editBlockHeader}>
           <Text style={styles.editBlockTitle}>Profile image</Text>
-          <Text style={styles.editBlockCaption}>Upload, replace, or remove the avatar shown on your complete profile</Text>
+          <Text style={styles.editBlockCaption}>
+            Upload, replace, or remove the avatar shown on your complete profile
+          </Text>
         </View>
         <View style={styles.profileImageEditor}>
-          <ProfileAvatar name={draft.name || draft.email || ''} imageUrl={imageUrl} loading={imageLoading} large />
+          <ProfileAvatar
+            name={draft.name || draft.email || ''}
+            imageUrl={imageUrl}
+            loading={imageLoading}
+            large
+          />
           <View style={styles.profileImageActions}>
-            <PrimaryButton label={imageUrl ? 'Replace image' : 'Upload image'} onPress={onReplaceImage} loading={loading} disabled={loading} />
-            {imageUrl ? <PrimaryButton label="Delete image" onPress={onRemoveImage} variant="secondary" loading={loading} disabled={loading} /> : null}
+            <PrimaryButton
+              label={imageUrl ? 'Replace image' : 'Upload image'}
+              onPress={onReplaceImage}
+              loading={loading}
+              disabled={loading}
+            />
+            {imageUrl ? (
+              <PrimaryButton
+                label="Delete image"
+                onPress={onRemoveImage}
+                variant="secondary"
+                loading={loading}
+                disabled={loading}
+              />
+            ) : null}
           </View>
         </View>
       </View>
@@ -1667,10 +1753,7 @@ function GithubAnalysisDetails({
 }) {
   const latestHistory = history[0];
   const result =
-    currentAnalysis?.github_result ??
-    latestHistory?.github_result ??
-    latestHistory?.result ??
-    {};
+    currentAnalysis?.github_result ?? latestHistory?.github_result ?? latestHistory?.result ?? {};
   const resultRecord = getRecord(result) ?? {};
   const username =
     currentAnalysis?.github_username ??
@@ -1683,20 +1766,26 @@ function GithubAnalysisDetails({
     getStringArray(resultRecord.skills_added) ??
     [];
   const languages =
-    getGithubItemLabels(resultRecord.languages) ??
-    getGithubItemLabels(resultRecord.language_breakdown) ??
-    [];
+    getGithubItemLabels(resultRecord.languages) ?? getGithubItemLabels(resultRecord.language_breakdown) ?? [];
   const frameworks =
     getGithubItemLabels(resultRecord.frameworks_and_tools) ??
     getGithubItemLabels(resultRecord.frameworks) ??
     getGithubItemLabels(resultRecord.tools) ??
     [];
-  const repositories = getGithubItemLabels(
-    resultRecord.repositories ??
-      resultRecord.top_repositories ??
-      resultRecord.projects ??
-      resultRecord.notable_projects,
-  ) ?? [];
+  const repositories =
+    getGithubItemLabels(
+      resultRecord.repositories ??
+        resultRecord.top_repositories ??
+        resultRecord.projects ??
+        resultRecord.notable_projects,
+    ) ?? [];
+  const strongestRepositories =
+    getGithubRepositories(
+      resultRecord.strongest_repositories ??
+        resultRecord.strongest_repos ??
+        resultRecord.strongest_projects ??
+        resultRecord.top_repositories,
+    ) ?? [];
   const summary =
     getString(resultRecord.summary) ??
     getString(resultRecord.profile_summary) ??
@@ -1724,23 +1813,32 @@ function GithubAnalysisDetails({
         </Pressable>
       </View>
 
-      {loading && !currentAnalysis && history.length === 0 ? <ActivityIndicator color={colors.coral} /> : null}
+      {loading && !currentAnalysis && history.length === 0 ? (
+        <ActivityIndicator color={colors.coral} />
+      ) : null}
 
       {!loading && !currentAnalysis && history.length === 0 ? (
-        <Text style={styles.emptyText}>No GitHub analysis found yet. Run Analyze GitHub to fetch details.</Text>
+        <Text style={styles.emptyText}>
+          No GitHub analysis found yet. Run Analyze GitHub to fetch details.
+        </Text>
       ) : null}
 
       {currentAnalysis || history.length > 0 ? (
         <InfoCard>
           <FieldRow label="GitHub username" value={username ? `@${username}` : undefined} />
           <FieldRow label="Primary language" value={getString(resultRecord.primary_language)} />
-          <FieldRow label="Latest run" value={latestHistory?.created_at ? formatDate(latestHistory.created_at) : undefined} />
+          <FieldRow
+            label="Latest run"
+            value={latestHistory?.created_at ? formatDate(latestHistory.created_at) : undefined}
+          />
 
           <Text style={styles.extractedSectionTitle}>Languages</Text>
           <ChipGroup items={languages} compact />
 
           <Text style={styles.extractedSectionTitle}>Frameworks and tools</Text>
           <ChipGroup items={frameworks} compact />
+
+          <GithubRepositoryList repositories={strongestRepositories} />
 
           <MiniList title="Repositories / projects" items={repositories} />
 
@@ -1756,6 +1854,57 @@ function GithubAnalysisDetails({
   );
 }
 
+function GithubRepositoryList({ repositories }: { repositories: GithubRepository[] }) {
+  if (!repositories.length) {
+    return null;
+  }
+
+  return (
+    <View style={styles.githubRepoSection}>
+      <Text style={styles.extractedSectionTitle}>Strongest repositories</Text>
+      {repositories.map((repository, index) => (
+        <GithubRepositoryCard
+          key={`${repository.name}-${repository.url ?? index}`}
+          repository={repository}
+          rank={index + 1}
+        />
+      ))}
+    </View>
+  );
+}
+
+function GithubRepositoryCard({
+  repository,
+  rank,
+}: {
+  repository: GithubRepository;
+  rank: number;
+}) {
+  return (
+    <View style={styles.githubRepoCard}>
+      <View style={styles.githubRepoHeader}>
+        <View style={styles.githubRepoRank}>
+          <Text style={styles.githubRepoRankText}>{rank}</Text>
+        </View>
+        <View style={styles.githubRepoTitleWrap}>
+          <Text style={styles.githubRepoName}>{repository.name}</Text>
+          {repository.url ? <Text style={styles.githubRepoUrl}>{repository.url}</Text> : null}
+        </View>
+      </View>
+
+      <View style={styles.githubRepoMetaRow}>
+        {repository.language ? <Text style={styles.githubRepoPill}>{repository.language}</Text> : null}
+        {repository.score ? <Text style={styles.githubRepoPill}>{repository.score}</Text> : null}
+        {repository.stars ? <Text style={styles.githubRepoPill}>{repository.stars}</Text> : null}
+        {repository.forks ? <Text style={styles.githubRepoPill}>{repository.forks}</Text> : null}
+      </View>
+
+      {repository.reason ? <Text style={styles.githubRepoReason}>{repository.reason}</Text> : null}
+      {repository.topics.length > 0 ? <ChipGroup items={repository.topics} compact /> : null}
+    </View>
+  );
+}
+
 function getString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
@@ -1767,6 +1916,83 @@ function getGithubHandleFromUrl(value: unknown) {
   }
 
   return url.replace(/\/$/, '').split('/').filter(Boolean).pop();
+}
+
+function getGithubRepositories(value: unknown): GithubRepository[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const repositories = value
+    .map((item) => {
+      if (typeof item === 'string') {
+        return {
+          name: item,
+          topics: [],
+        };
+      }
+
+      const record = getRecord(item);
+      if (!record) {
+        return undefined;
+      }
+
+      const name =
+        getString(record.name) ??
+        getString(record.repository) ??
+        getString(record.repo) ??
+        getString(record.title) ??
+        getString(record.full_name);
+
+      if (!name) {
+        return undefined;
+      }
+
+      const score =
+        typeof record.score === 'number'
+          ? `Score ${record.score}`
+          : typeof record.strength_score === 'number'
+            ? `Score ${record.strength_score}`
+            : typeof record.percent === 'number'
+              ? `${record.percent}%`
+              : undefined;
+
+      const stars =
+        typeof record.stars === 'number'
+          ? `${record.stars} stars`
+          : typeof record.stargazers_count === 'number'
+            ? `${record.stargazers_count} stars`
+            : undefined;
+      const forks =
+        typeof record.forks === 'number'
+          ? `${record.forks} forks`
+          : typeof record.forks_count === 'number'
+            ? `${record.forks_count} forks`
+            : undefined;
+
+      return {
+        name,
+        language: getString(record.language) ?? getString(record.primary_language),
+        score,
+        reason:
+          getString(record.reason) ??
+          getString(record.why) ??
+          getString(record.strength) ??
+          getString(record.description) ??
+          getString(record.summary),
+        url: getString(record.url) ?? getString(record.html_url) ?? getString(record.github_url),
+        stars,
+        forks,
+        topics:
+          getStringArray(record.topics) ??
+          getStringArray(record.technologies) ??
+          getStringArray(record.frameworks_and_tools) ??
+          [],
+      };
+    })
+    .filter(Boolean) as GithubRepository[];
+
+  return repositories.length ? repositories : undefined;
 }
 
 function getGithubItemLabels(value: unknown): string[] | undefined {
@@ -1798,14 +2024,21 @@ function getGithubItemLabels(value: unknown): string[] | undefined {
             ? `${record.percentage}%`
             : undefined;
       const level = getString(record.level);
+      const score =
+        typeof record.score === 'number'
+          ? `Score ${record.score}`
+          : typeof record.strength_score === 'number'
+            ? `Score ${record.strength_score}`
+            : undefined;
       const language = getString(record.language) ?? getString(record.primary_language);
-      const description = getString(record.description) ?? getString(record.summary);
+      const reason = getString(record.reason) ?? getString(record.why) ?? getString(record.strength);
+      const description = getString(record.description) ?? getString(record.summary) ?? reason;
 
       if (percent || level) {
         return [name, percent, level].filter(Boolean).join(' • ');
       }
 
-      return [name, language, description].filter(Boolean).join(' - ');
+      return [name, language, score, description].filter(Boolean).join(' - ');
     })
     .filter(Boolean);
 
@@ -2300,7 +2533,8 @@ function normalizeLinkedinHistory(data: unknown): LinkedInHistoryRecord[] {
           (typeof analysisRecord.extracted === 'object' && analysisRecord.extracted
             ? (analysisRecord.extracted as Record<string, unknown>)
             : undefined),
-        created_at: typeof analysisRecord.created_at === 'string' ? analysisRecord.created_at : image.created_at,
+        created_at:
+          typeof analysisRecord.created_at === 'string' ? analysisRecord.created_at : image.created_at,
         analysis_id: analysisRecord.id,
       }));
     });
@@ -2748,6 +2982,73 @@ const styles = StyleSheet.create({
   githubSummary: {
     gap: 6,
     marginTop: 4,
+  },
+  githubRepoSection: {
+    gap: 10,
+  },
+  githubRepoCard: {
+    backgroundColor: 'rgba(91,141,239,0.10)',
+    borderColor: 'rgba(91,141,239,0.24)',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  githubRepoHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  githubRepoRank: {
+    alignItems: 'center',
+    backgroundColor: colors.coral,
+    borderRadius: 999,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  githubRepoRankText: {
+    color: colors.ink,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+  },
+  githubRepoTitleWrap: {
+    flex: 1,
+    gap: 3,
+  },
+  githubRepoName: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  githubRepoUrl: {
+    color: colors.textSoft,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  githubRepoMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  githubRepoPill: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 999,
+    borderWidth: 1,
+    color: colors.text,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  githubRepoReason: {
+    color: colors.textSoft,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    lineHeight: 19,
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.045)',

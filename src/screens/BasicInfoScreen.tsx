@@ -11,6 +11,7 @@ import { OnboardingAction } from '../state/onboardingReducer';
 import { colors, fonts, type } from '../theme/tokens';
 import { validateBasicInfo, BasicInfoErrors } from '../utils/validation';
 import { DropdownField } from '../components/DropdownField';
+import { PasswordVisibilityIcon } from '../components/PasswordVisibilityIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface BasicInfoScreenProps {
@@ -24,8 +25,15 @@ interface BasicInfoScreenProps {
 type RegisterErrors = BasicInfoErrors & Partial<Record<'password' | 'api', string>>;
 
 const collegeOptions = [
-  { label: 'P. R. Pote Patil College of Engineering and Management, Amravati', value: 'P. R. Pote Patil College of Engineering and Management, Amravati' },
-  { label: 'SSGMC', value: 'SSGMC' },
+  { label: 'IIT Bombay', value: 'Indian Institute of Technology Bombay' },
+  { label: 'VJTI Mumbai', value: 'Veermata Jijabai Technological Institute, Mumbai' },
+  { label: 'COEP Pune', value: 'COEP Technological University, Pune' },
+  { label: 'SPIT Mumbai', value: 'Sardar Patel Institute of Technology, Mumbai' },
+  { label: 'PICT Pune', value: 'Pune Institute of Computer Technology, Pune' },
+  { label: 'VNIT Nagpur', value: 'Visvesvaraya National Institute of Technology, Nagpur' },
+  { label: 'VIT Pune', value: 'Vishwakarma Institute of Technology, Pune' },
+  { label: 'PRPCEM Amravati', value: 'P. R. Pote Patil College of Engineering and Management, Amravati' },
+  { label: 'SSGMC Shegaon', value: 'Shri Shivaji Science and Management College (SSGMC)' },
   { label: 'Other college/university', value: 'Other college/university' },
 ];
 
@@ -38,6 +46,7 @@ const fieldOptions = [
   { label: 'Electronics and Telecommunication', value: 'Electronics and Telecommunication' },
   { label: 'Mechanical Engineering', value: 'Mechanical Engineering' },
   { label: 'Civil Engineering', value: 'Civil Engineering' },
+  { label: 'Electrical Engineering', value: 'Electrical Engineering'},
 ];
 
 const degreeLevelOptions = [
@@ -66,7 +75,7 @@ const countryOptions = [
 
 function getGraduationYearOptions() {
   const currentYear = new Date().getFullYear();
-  return Array.from({ length: 8 }, (_, index) => {
+  return Array.from({ length: 25 }, (_, index) => {
     const year = currentYear + index;
     return { label: String(year), value: String(year) };
   });
@@ -81,6 +90,7 @@ export function BasicInfoScreen({
 }: BasicInfoScreenProps) {
   const [submitted, setSubmitted] = useState(false);
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [localApiError, setLocalApiError] = useState('');
@@ -203,7 +213,17 @@ export function BasicInfoScreen({
             label="Password"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
+            secureTextEntry={!passwordVisible}
+            rightElement={
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={passwordVisible ? 'Conceal password' : 'Reveal password'}
+                onPress={() => setPasswordVisible((visible) => !visible)}
+                style={styles.passwordToggle}
+              >
+                <PasswordVisibilityIcon visible={passwordVisible} />
+              </Pressable>
+            }
             error={shownErrors.password}
           />
         ) : null}
@@ -509,6 +529,13 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontFamily: fonts.body,
     fontSize: 12,
+  },
+  passwordToggle: {
+    alignItems: 'center',
+    borderRadius: 999,
+    minWidth: 44,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   errorText: {
     color: colors.error,

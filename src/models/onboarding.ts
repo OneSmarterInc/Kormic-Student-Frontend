@@ -8,7 +8,8 @@ export type OnboardingRoute =
   | 'CV'
   | 'BuildingAgent'
   | 'AgentLive'
-  | 'Profile';
+  | 'Profile'
+  | 'BotScreen';
 
 export type Interest = 'Study abroad' | 'Internship' | 'Job' | 'Not sure yet';
 

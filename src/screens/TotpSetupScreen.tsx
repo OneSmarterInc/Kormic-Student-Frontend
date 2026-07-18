@@ -202,6 +202,9 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
         />
       }
     >
+      <View style={styles.content}>
+
+     
       <Text style={styles.title}>{isEnrollment ? 'Secure your account' : 'Verify your sign in'}</Text>
       <Text style={styles.subhead}>
         {isEnrollment
@@ -290,6 +293,7 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
           <PrimaryButton label="Try setup again" variant="secondary" onPress={startEnrollment} loading={loadingEnrollment} />
         ) : null}
       </View>
+       </View>
     </ScreenShell>
   );
 }
@@ -315,6 +319,10 @@ function markProfileExists(session: AuthSession): AuthSession {
 }
 
 const styles = StyleSheet.create({
+  content:{
+    flex: 1,
+    justifyContent: 'center',
+  },
   title: type.title,
   subhead: {
     color: colors.textSoft,
