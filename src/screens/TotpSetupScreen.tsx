@@ -287,7 +287,7 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
           <Text style={styles.helperText}>Backup codes created: {backupCodes.length}</Text>
         ) : null}
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {/* {error ? <Text style={styles.errorText}>{error}</Text> : null} */}
 
         {isEnrollment && !secret ? (
           <PrimaryButton label="Try setup again" variant="secondary" onPress={startEnrollment} loading={loadingEnrollment} />
@@ -321,7 +321,9 @@ function markProfileExists(session: AuthSession): AuthSession {
 const styles = StyleSheet.create({
   content:{
     flex: 1,
+    marginTop:24,
     justifyContent: 'center',
+    paddingBottom:174,
   },
   title: type.title,
   subhead: {

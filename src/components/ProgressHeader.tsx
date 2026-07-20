@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 38,
     paddingBottom: 8,
     backgroundColor: colors.ink,
   },

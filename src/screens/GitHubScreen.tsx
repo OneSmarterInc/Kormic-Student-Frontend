@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { Linking,Platform, StyleSheet, Text, View } from 'react-native';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
@@ -21,11 +21,16 @@ type GithubViewStatus = {
   github_username?: string;
   connected_at?: string;
 };
-
+const isWeb = Platform.OS === 'web';
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function readGithubCallbackResult() {
-  if (typeof window === 'undefined') {
+  if (
+    !isWeb ||
+    typeof window === 'undefined' ||
+    typeof window.location === 'undefined' ||
+    typeof window.location.search !== 'string'
+  ) {
     return undefined;
   }
 
@@ -116,21 +121,23 @@ export function GitHubScreen({ state, dispatch, onContinue }: GitHubScreenProps)
     loadStatus();
   }, [loadStatus]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
+ useEffect(() => {
+  if (!isWeb || typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+    return undefined;
+  }
 
-    const refreshOnFocus = () => {
-      loadStatus({ silent: true });
-    };
+  const refreshOnFocus = () => {
+    loadStatus({ silent: true });
+  };
 
-    window.addEventListener('focus', refreshOnFocus);
+  window.addEventListener('focus', refreshOnFocus);
 
-    return () => {
+  return () => {
+    if (typeof window.removeEventListener === 'function') {
       window.removeEventListener('focus', refreshOnFocus);
-    };
-  }, [loadStatus]);
+    }
+  };
+}, [loadStatus]);
 
   const connect = async () => {
     setSkipVisible(false);
@@ -151,7 +158,7 @@ export function GitHubScreen({ state, dispatch, onContinue }: GitHubScreenProps)
         throw new Error('The server did not return a GitHub authorization URL.');
       }
 
-      if (typeof window !== 'undefined') {
+      if (isWeb && typeof window !== 'undefined' && typeof window.open === 'function') {
         const popup = window.open(data.authorize_url, '_blank');
 
         if (!popup) {

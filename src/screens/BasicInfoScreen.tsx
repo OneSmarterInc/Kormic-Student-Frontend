@@ -496,6 +496,7 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 14,
+    paddingBottom:174,
   },
   dateField: {
     gap: 6,

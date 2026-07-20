@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { AuthSession } from '../models/onboarding';
 import { AriaHistoryMessage, chatWithAria, getAriaHistory } from '../services/api';
 import { colors, fonts } from '../theme/tokens';
+import { notifyBotReplyReady } from '../services/notifications';
 
 type ChatMessage = {
   id: string;
@@ -78,7 +79,9 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
     const loadAgent = async () => {
       setAgentName(DEFAULT_AGENT_NAME);
       setMessages((current) =>
-        current.length === 1 && current[0]?.id === 'welcome' ? [getWelcomeMessage(DEFAULT_AGENT_NAME)] : current,
+        current.length === 1 && current[0]?.id === 'welcome'
+          ? [getWelcomeMessage(DEFAULT_AGENT_NAME)]
+          : current,
       );
       await loadHistory(DEFAULT_AGENT_NAME);
     };
@@ -139,6 +142,8 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
         cacheAriaMessages(session, nextMessages);
         return nextMessages;
       });
+
+      await notifyBotReplyReady(response.agent || agentName);
       await loadHistory();
     } catch (chatError) {
       setError(chatError instanceof Error ? chatError.message : `Unable to chat with ${agentName}`);
@@ -215,7 +220,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
                 ) : null}
               </ScrollView>
 
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              {/* {error ? <Text style={styles.errorText}>{error}</Text> : null} */}
 
               <View style={styles.composer}>
                 {!draft.trim() ? (
@@ -260,7 +265,9 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
                     )}
                   </Pressable>
                 </View>
-                <Text style={styles.composerHint}>{agentName} uses your profile, resume, GitHub, and LinkedIn context.</Text>
+                <Text style={styles.composerHint}>
+                  {agentName} uses your profile, resume, GitHub, and LinkedIn context.
+                </Text>
               </View>
             </>
           )}
@@ -329,7 +336,9 @@ function RecentChatSidebar({
               <Text numberOfLines={2} style={styles.threadTitle}>
                 {thread.title}
               </Text>
-              {thread.createdAt ? <Text style={styles.threadTime}>{formatChatTime(thread.createdAt)}</Text> : null}
+              {thread.createdAt ? (
+                <Text style={styles.threadTime}>{formatChatTime(thread.createdAt)}</Text>
+              ) : null}
             </Pressable>
           ))}
         </View>
@@ -355,10 +364,7 @@ function FormattedMessageText({ text, formatBold }: { text: string; formatBold: 
   return (
     <Text style={styles.bubbleText}>
       {segments.map((segment, index) => (
-        <Text
-          key={`${segment.text}-${index}`}
-          style={segment.bold ? styles.boldText : undefined}
-        >
+        <Text key={`${segment.text}-${index}`} style={segment.bold ? styles.boldText : undefined}>
           {segment.text}
         </Text>
       ))}
@@ -542,7 +548,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F1026',
     flexDirection: 'column',
     gap: 0,
-    height: 620,
+    height: 680,
   },
   header: {
     alignItems: 'center',
@@ -552,8 +558,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     minHeight: 40,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   headerText: {
     flex: 1,

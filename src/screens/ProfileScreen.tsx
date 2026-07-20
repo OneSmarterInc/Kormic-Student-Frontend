@@ -5,6 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
 import { TextField } from '../components/TextField';
 import { AuthSession, LinkedInScreenshot } from '../models/onboarding';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { AriaBotScreen } from './AriaBotScreen';
 import {
   API_BASE_URL,
@@ -425,6 +426,7 @@ export function ProfileScreen({
   const [section, setSection] = useState<ProfileSection>('aria');
   const [menuOpen, setMenuOpen] = useState(false);
   const [resumes, setResumes] = useState<ResumeRecord[]>([]);
+  const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
   const [linkedinImages, setLinkedinImages] = useState<LinkedInHistoryRecord[]>([]);
   const [linkedinPreviews, setLinkedinPreviews] = useState<LinkedInScreenshot[]>([]);
   const [linkedinLoading, setLinkedinLoading] = useState(false);
@@ -493,19 +495,40 @@ export function ProfileScreen({
       const imageBlob = await getProfileImage(session);
       if (imageBlob.type.includes('application/json')) {
         const data = JSON.parse(await imageBlob.text()) as { profile_image_url?: string | null };
-        setProfileImageUrl(getRenderableMediaUrl(data.profile_image_url) ?? '');
+
+        if (data.profile_image_url) {
+          setProfileImageUrl(`${data.profile_image_url}?t=${Date.now()}`);
+        }
+
         return;
       }
 
-      if (typeof URL !== 'undefined') {
-        setProfileImageUrl(URL.createObjectURL(imageBlob));
-      }
+      const dataUri = await blobToDataUri(imageBlob);
+      setProfileImageUrl(dataUri);
     } catch {
       setProfileImageUrl(getRenderableMediaUrl(profile.profile_image_url) ?? '');
     } finally {
       setProfileImageLoading(false);
     }
   };
+
+  function blobToDataUri(blob: Blob) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+          return;
+        }
+
+        reject(new Error('Unable to read profile image'));
+      };
+
+      reader.onerror = () => reject(new Error('Unable to read profile image'));
+      reader.readAsDataURL(blob);
+    });
+  }
 
   useEffect(() => {
     loadProfileImage();
@@ -726,10 +749,19 @@ export function ProfileScreen({
       if (!image) {
         throw new Error('Choose a profile image before uploading.');
       }
-      await uploadProfileImage(session, toProfileImageFile(image));
-      setProfileImageUrl(getRenderableMediaUrl(image.uri) ?? '');
-      await loadProfileImage();
-      await onProfileChanged?.();
+      const response = await uploadProfileImage(session, toProfileImageFile(image));
+
+      const previewUrl =
+        getRenderableMediaUrl(image.uri) ?? getRenderableMediaUrl(response.profile_image_url);
+
+      if (previewUrl) {
+        setProfileImageUrl(previewUrl);
+      }
+
+      await onProfileChanged?.({
+        ...profile,
+        profile_image_url: response.profile_image_url ?? profile.profile_image_url,
+      });
     } catch (imageError) {
       setSectionError(imageError instanceof Error ? imageError.message : 'Unable to upload profile image');
     } finally {
@@ -817,6 +849,11 @@ export function ProfileScreen({
     );
   }
 
+  const confirmLogout = () => {
+    setLogoutConfirmVisible(false);
+    onLogout?.();
+  };
+
   return (
     <ScreenShell>
       <View style={styles.topBar}>
@@ -841,13 +878,24 @@ export function ProfileScreen({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Log out"
-            onPress={onLogout}
+            onPress={() => setLogoutConfirmVisible(true)}
             style={styles.logoutButton}
           >
             <Text style={styles.logoutText}>Logout</Text>
           </Pressable>
         ) : null}
       </View>
+
+      <ConfirmModal
+        visible={logoutConfirmVisible}
+        title="Log out?"
+        message="You will need to sign in again to access your profile and agent chat."
+        primaryLabel="Logout"
+        secondaryLabel="Cancel"
+        onPrimary={confirmLogout}
+        onSecondary={() => setLogoutConfirmVisible(false)}
+        onRequestClose={() => setLogoutConfirmVisible(false)}
+      />
 
       {menuOpen ? (
         <ProfileMenu active={section} onSelect={selectSection} />
@@ -955,6 +1003,7 @@ export function ProfileScreen({
                   <ProfileAvatar
                     name={profile.name || profile.email || ''}
                     imageUrl={profileImageUrl}
+                    accessToken={session?.access}
                     loading={profileImageLoading}
                   />
                   <View style={styles.headerText}>
@@ -985,7 +1034,6 @@ export function ProfileScreen({
               <View style={styles.form}>
                 <SectionLabel>Personal information</SectionLabel>
                 <InfoCard>
-                  
                   <FieldRow label="Institution" value={profile.institution} />
                   <FieldRow label="Branch" value={profile.major} />
                   <FieldRow label="Program" value={profile.program} />
@@ -1127,20 +1175,30 @@ function ProfileError({
 function ProfileAvatar({
   name,
   imageUrl,
+  accessToken,
   loading = false,
   large = false,
 }: {
   name: string;
   imageUrl?: string;
+  accessToken?: string;
   loading?: boolean;
   large?: boolean;
 }) {
   const normalizedUrl = getRenderableMediaUrl(imageUrl);
+  const imageSource = normalizedUrl
+    ? {
+        uri: normalizedUrl,
+        ...(accessToken && isProtectedProfileImageUrl(normalizedUrl)
+          ? { headers: { Authorization: `Bearer ${accessToken}` } }
+          : {}),
+      }
+    : undefined;
 
   return (
     <View style={[styles.avatar, large && styles.avatarLarge]}>
-      {normalizedUrl ? (
-        <Image source={{ uri: normalizedUrl }} style={styles.avatarImage} resizeMode="cover" />
+      {imageSource ? (
+        <Image source={imageSource} style={styles.avatarImage} resizeMode="cover" />
       ) : (
         <Text style={styles.avatarText}>{getInitials(name)}</Text>
       )}
@@ -1630,7 +1688,7 @@ function ResumeManager({
           loading={loading}
         />
       </View>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {/* {error ? <Text style={styles.errorText}>{error}</Text> : null} */}
       {loading ? <ActivityIndicator color={colors.coral} /> : null}
       {!loading && resumes.length === 0 ? (
         <Text style={styles.emptyText}>No resumes uploaded yet.</Text>
@@ -1724,7 +1782,7 @@ function SourceEditor({
             keyboardType="url"
           />
         ) : null}
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {/* {error ? <Text style={styles.errorText}>{error}</Text> : null} */}
         {showPrimaryAction ? (
           <PrimaryButton label={primaryLabel} onPress={onPrimary} disabled={disabled} loading={disabled} />
         ) : null}
@@ -1873,13 +1931,7 @@ function GithubRepositoryList({ repositories }: { repositories: GithubRepository
   );
 }
 
-function GithubRepositoryCard({
-  repository,
-  rank,
-}: {
-  repository: GithubRepository;
-  rank: number;
-}) {
+function GithubRepositoryCard({ repository, rank }: { repository: GithubRepository; rank: number }) {
   return (
     <View style={styles.githubRepoCard}>
       <View style={styles.githubRepoHeader}>
@@ -2578,16 +2630,11 @@ function normalizeMediaUrl(value: string | null | undefined) {
 }
 
 function getRenderableMediaUrl(value: string | null | undefined) {
-  const normalizedUrl = normalizeMediaUrl(value);
-  if (!normalizedUrl || isProtectedProfileImageUrl(normalizedUrl)) {
-    return undefined;
-  }
-
-  return normalizedUrl;
+  return normalizeMediaUrl(value);
 }
 
 function isProtectedProfileImageUrl(value: string) {
-  return /\/api\/profile\/[^/]+\/image\/?$/i.test(value);
+  return /\/api\/profile\/[^/]+\/image\/?(?:\?.*)?$/i.test(value);
 }
 
 function isProtectedLinkedinImageUrl(value: string) {
@@ -2698,7 +2745,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 28,
+    marginBottom: 12,
   },
   menuButton: {
     alignItems: 'center',
@@ -2709,6 +2756,7 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     width: 44,
+    marginTop: 24,
   },
   menuIcon: {
     color: colors.offWhite,
@@ -2720,6 +2768,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: fonts.bodyMedium,
     fontSize: 17,
+    marginTop: 18,
   },
   logoutButton: {
     alignItems: 'center',
@@ -2730,6 +2779,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 36,
     paddingHorizontal: 10,
+    marginTop: 24,
   },
   logoutText: {
     color: colors.error,
@@ -2815,6 +2865,7 @@ const styles = StyleSheet.create({
   },
   editFooter: {
     gap: 10,
+    paddingTop: 174,
   },
   loadingState: {
     alignItems: 'center',
@@ -2934,8 +2985,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   form: {
-    gap: 14,
-    marginTop: 24,
+    gap: 10,
   },
   actionRow: {
     flexDirection: 'row',

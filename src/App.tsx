@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
-import { ActivityIndicator, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { Fraunces_600SemiBold, Fraunces_600SemiBold_Italic, useFonts as useFraunces } from '@expo-google-fonts/fraunces';
+import { ActivityIndicator, Image, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import {
+  Fraunces_600SemiBold,
+  Fraunces_600SemiBold_Italic,
+  useFonts as useFraunces,
+} from '@expo-google-fonts/fraunces';
 import { Inter_400Regular, Inter_600SemiBold, useFonts as useInter } from '@expo-google-fonts/inter';
 import { ProgressHeader } from './components/ProgressHeader';
 import { initialOnboardingState, OnboardingRoute } from './models/onboarding';
@@ -23,6 +27,7 @@ import { colors, fonts } from './theme/tokens';
 import TotpScreen from './screens/TotpSetupScreen';
 import { AuthSession } from './models/onboarding';
 import { isBasicInfoComplete } from './utils/validation';
+const botIcon = require('./assets/bot.jpeg');
 
 function getFirstMissingOnboardingRoute(session: AuthSession): OnboardingRoute {
   const onboarding = session.user?.onboarding;
@@ -102,7 +107,13 @@ function isAuthRoute(route: OnboardingRoute) {
 }
 
 function hidesBotLauncher(route: OnboardingRoute) {
-  return route === 'CV' || route === 'GitHub' || route === 'AgentLive' || route === 'LinkedIn' || route === 'BuildingAgent';
+  return (
+    route === 'CV' ||
+    route === 'GitHub' ||
+    route === 'AgentLive' ||
+    route === 'LinkedIn' ||
+    route === 'BuildingAgent'
+  );
 }
 
 export default function App() {
@@ -158,59 +169,67 @@ export default function App() {
       setProfileLoading(false);
     }
   }, []);
-  const continueAfterAuth = useCallback(async (session: AuthSession) => {
-    let nextSession = session;
-    const onboarding = nextSession.user?.onboarding;
-    setBasicInfoApiError('');
+  const continueAfterAuth = useCallback(
+    async (session: AuthSession) => {
+      let nextSession = session;
+      const onboarding = nextSession.user?.onboarding;
+      setBasicInfoApiError('');
 
-    if (onboarding && !onboarding.profile_exists && isBasicInfoComplete(state.basicInfo)) {
-      try {
-        await createStudentProfile(nextSession, state.basicInfo);
-        nextSession = withProfileCreated(nextSession);
-      } catch (error) {
-        const message = getErrorMessage(error, 'Unable to create student profile');
+      if (onboarding && !onboarding.profile_exists && isBasicInfoComplete(state.basicInfo)) {
+        try {
+          await createStudentProfile(nextSession, state.basicInfo);
+          nextSession = withProfileCreated(nextSession);
+        } catch (error) {
+          const message = getErrorMessage(error, 'Unable to create student profile');
 
-        if (nextSession.refresh && isTotpEnrollmentError(message)) {
-          try {
-            const refreshed = await refreshAccessToken(nextSession.refresh);
-            nextSession = {
-              ...nextSession,
-              access: refreshed.access,
-              refresh: refreshed.refresh ?? nextSession.refresh,
-            };
-            await createStudentProfile(nextSession, state.basicInfo);
-            nextSession = withProfileCreated(nextSession);
-          } catch (retryError) {
-            setBasicInfoApiError(getErrorMessage(retryError, 'Unable to create student profile after TOTP verification'));
+          if (nextSession.refresh && isTotpEnrollmentError(message)) {
+            try {
+              const refreshed = await refreshAccessToken(nextSession.refresh);
+              nextSession = {
+                ...nextSession,
+                access: refreshed.access,
+                refresh: refreshed.refresh ?? nextSession.refresh,
+              };
+              await createStudentProfile(nextSession, state.basicInfo);
+              nextSession = withProfileCreated(nextSession);
+            } catch (retryError) {
+              setBasicInfoApiError(
+                getErrorMessage(retryError, 'Unable to create student profile after TOTP verification'),
+              );
+            }
+          } else {
+            setBasicInfoApiError(message);
           }
-        } else {
-          setBasicInfoApiError(message);
         }
       }
-    }
 
-    await saveTokens(nextSession);
-    dispatch({ type: 'SET_AUTH_SESSION', session: nextSession });
-    const nextRoute = getFirstMissingOnboardingRoute(nextSession);
-    navigate(nextRoute);
-    if (nextRoute === 'Profile') {
-      loadProfileForSession(nextSession);
-    }
-  }, [loadProfileForSession, navigate, state.basicInfo]);
-  const continueAfterBasicInfo = useCallback(async (session?: AuthSession) => {
-    if (!session) {
-      navigate('SecuritySetup');
-      return;
-    }
+      await saveTokens(nextSession);
+      dispatch({ type: 'SET_AUTH_SESSION', session: nextSession });
+      const nextRoute = getFirstMissingOnboardingRoute(nextSession);
+      navigate(nextRoute);
+      if (nextRoute === 'Profile') {
+        loadProfileForSession(nextSession);
+      }
+    },
+    [loadProfileForSession, navigate, state.basicInfo],
+  );
+  const continueAfterBasicInfo = useCallback(
+    async (session?: AuthSession) => {
+      if (!session) {
+        navigate('SecuritySetup');
+        return;
+      }
 
-    if (session.mustEnrollTotp || session.totpRequired || !session.user?.totp_enrolled) {
-      await saveTokens(session);
-      navigate('SecuritySetup');
-      return;
-    }
+      if (session.mustEnrollTotp || session.totpRequired || !session.user?.totp_enrolled) {
+        await saveTokens(session);
+        navigate('SecuritySetup');
+        return;
+      }
 
-    await continueAfterAuth(session);
-  }, [continueAfterAuth, navigate]);
+      await continueAfterAuth(session);
+    },
+    [continueAfterAuth, navigate],
+  );
   const viewProfile = useCallback(async () => {
     if (!state.authSession) {
       setProfileError('Please sign in again before opening your profile.');
@@ -221,16 +240,19 @@ export default function App() {
     navigate('Profile');
     await loadProfileForSession(state.authSession);
   }, [loadProfileForSession, navigate, state.authSession]);
-  const handleProfileChanged = useCallback(async (updatedProfile?: StudentProfile) => {
-    if (updatedProfile) {
-      setProfile(updatedProfile);
-      setProfileError('');
-    }
+  const handleProfileChanged = useCallback(
+    async (updatedProfile?: StudentProfile) => {
+      if (updatedProfile) {
+        setProfile(updatedProfile);
+        setProfileError('');
+      }
 
-    if (state.authSession) {
-      await loadProfileForSession(state.authSession);
-    }
-  }, [loadProfileForSession, state.authSession]);
+      if (state.authSession) {
+        await loadProfileForSession(state.authSession);
+      }
+    },
+    [loadProfileForSession, state.authSession],
+  );
   const logout = useCallback(async () => {
     await clearSavedTokens();
     setProfile(undefined);
@@ -310,7 +332,13 @@ export default function App() {
       case 'Welcome':
         return <WelcomeScreen onStart={() => navigate('BasicInfo')} onLogin={() => navigate('Login')} />;
       case 'Login':
-        return <LoginScreen dispatch={dispatch} onContinue={(session) => (session ? continueAfterAuth(session) : navigate('SecuritySetup'))} onSignUp={()=> navigate('Welcome')} />;
+        return (
+          <LoginScreen
+            dispatch={dispatch}
+            onContinue={(session) => (session ? continueAfterAuth(session) : navigate('SecuritySetup'))}
+            onSignUp={() => navigate('Welcome')}
+          />
+        );
       case 'BasicInfo':
         return (
           <BasicInfoScreen
@@ -397,6 +425,7 @@ function BotScreen({ session, onBack }: { session?: AuthSession; onBack: () => v
         </Pressable>
         <Text style={styles.botTitle}>Agent chat</Text>
       </View>
+
       <View style={styles.botContent}>
         <AriaBotScreen session={session} />
       </View>
@@ -412,7 +441,7 @@ function FloatingBotLauncher({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       style={styles.botLauncher}
     >
-      <Text style={styles.botLauncherText}>A</Text>
+      <Image source={botIcon} style={styles.botLauncherImage} resizeMode="cover" />
     </Pressable>
   );
 }
@@ -433,6 +462,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ink,
     paddingHorizontal: 14,
     paddingBottom: 14,
+    marginTop: 28,
   },
   botTopBar: {
     alignItems: 'center',
@@ -454,6 +484,11 @@ const styles = StyleSheet.create({
     color: colors.offWhite,
     fontFamily: fonts.bodyMedium,
     fontSize: 20,
+  },
+  botLauncherImage: {
+    height: 54,
+    width: 54,
+    borderRadius: 27,
   },
   botTitle: {
     color: colors.offWhite,
