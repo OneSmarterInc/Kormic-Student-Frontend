@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, Platform } from 'react-native';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
@@ -2223,8 +2223,13 @@ function LinkedinImageHistory({
                 title={image.title}
                 uri={
                   image.uri && isProtectedLinkedinImageUrl(image.uri)
-                    ? authorizedImageUris[image.id]
+                    ? Platform.OS === 'web'
+                      ? authorizedImageUris[image.id]
+                      : image.uri
                     : image.uri
+                }
+                accessToken={
+                  image.uri && isProtectedLinkedinImageUrl(image.uri) ? session?.access : undefined
                 }
                 caption={image.createdAt ? `Uploaded ${formatDate(image.createdAt)}` : undefined}
               />
@@ -2240,11 +2245,28 @@ function LinkedinImageHistory({
   );
 }
 
-function LinkedinImageCard({ title, uri, caption }: { title: string; uri?: string; caption?: string }) {
+function LinkedinImageCard({
+  title,
+  uri,
+  caption,
+  accessToken,
+}: {
+  title: string;
+  uri?: string;
+  caption?: string;
+  accessToken?: string;
+}) {
   return (
     <View style={styles.linkedinImageCard}>
       {uri ? (
-        <Image source={{ uri }} style={styles.linkedinImage} resizeMode="cover" />
+        <Image
+          source={{
+            uri,
+            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+          }}
+          style={styles.linkedinImage}
+          resizeMode="cover"
+        />
       ) : (
         <View style={styles.linkedinImagePlaceholder} />
       )}

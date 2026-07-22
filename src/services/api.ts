@@ -873,3 +873,16 @@ export function getAgentName(session: AuthSession) {
     'Unable to load agent name',
   );
 }
+
+export function updateAgentName(session: AuthSession, agentName: string) {
+  return requestWithSession<AgentNameResponse>(
+    session,
+    '/profile/agent-name/',
+    (accessToken) => ({
+      method: 'PATCH',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ agent_name: agentName }),
+    }),
+    'Unable to update agent name',
+  );
+}

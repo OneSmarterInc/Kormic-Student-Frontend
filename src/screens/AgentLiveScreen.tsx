@@ -18,7 +18,7 @@ export function AgentLiveScreen({ state, onViewProfile = () => undefined, loadin
   return (
     <ScreenShell
       scroll={false}
-      footer={<PrimaryButton label="View My Complete Profile" onPress={onViewProfile} loading={loadingProfile} />}
+      footer={<PrimaryButton label="Chat with Agent" onPress={onViewProfile} loading={loadingProfile} />}
     >
       <View style={styles.content}>
         <View style={styles.glyph}>

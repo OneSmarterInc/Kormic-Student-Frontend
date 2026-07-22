@@ -115,10 +115,9 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
 
     try {
       setOpeningAuthenticator(true);
-      const canOpen = await Linking.canOpenURL(provisioningUri);
-      if (canOpen) {
-        await Linking.openURL(provisioningUri);
-      }
+      await Linking.openURL(provisioningUri);
+    }catch{
+      setError('No authenticator app found. Install Google Authenticator or use the manual setup key.');
     } finally {
       setOpeningAuthenticator(false);
     }

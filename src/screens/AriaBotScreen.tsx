@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Platform, AppState } from 'react-native';
 import { AuthSession } from '../models/onboarding';
-import { AriaHistoryMessage, chatWithAria, getAriaHistory } from '../services/api';
+import { AriaHistoryMessage, chatWithAria, getAgentName, getAriaHistory, updateAgentName } from '../services/api';
 import { colors, fonts } from '../theme/tokens';
 import { notifyBotReplyReady } from '../services/notifications';
 
@@ -50,9 +50,43 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(DEFAULT_AGENT_NAME);
+  const [nameSaving, setNameSaving] = useState(false);
   const [error, setError] = useState('');
   const historyThreads = useMemo(() => buildAriaThreads(historyMessages), [historyMessages]);
   const groupedThreads = useMemo(() => groupThreadsByDate(historyThreads), [historyThreads]);
+
+  const applyAgentName = (nextAgentName: string) => {
+    setAgentName(nextAgentName);
+    setNameDraft(nextAgentName);
+    setMessages((current) =>
+      current.length === 1 && current[0]?.id === 'welcome'
+        ? [getWelcomeMessage(nextAgentName)]
+        : current,
+    );
+  };
+
+  const loadAgentName = async () => {
+    if (!session) {
+      applyAgentName(DEFAULT_AGENT_NAME);
+      return DEFAULT_AGENT_NAME;
+    }
+
+    try {
+      const response = await getAgentName(session);
+      const nextAgentName =
+        response.agent_name?.trim() ||
+        response.agent?.trim() ||
+        response.name?.trim() ||
+        DEFAULT_AGENT_NAME;
+      applyAgentName(nextAgentName);
+      return nextAgentName;
+    } catch {
+      applyAgentName(DEFAULT_AGENT_NAME);
+      return DEFAULT_AGENT_NAME;
+    }
+  };
 
   const loadHistory = async (nextAgentName = agentName) => {
     if (!session) {
@@ -77,13 +111,8 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
 
   useEffect(() => {
     const loadAgent = async () => {
-      setAgentName(DEFAULT_AGENT_NAME);
-      setMessages((current) =>
-        current.length === 1 && current[0]?.id === 'welcome'
-          ? [getWelcomeMessage(DEFAULT_AGENT_NAME)]
-          : current,
-      );
-      await loadHistory(DEFAULT_AGENT_NAME);
+      const nextAgentName = await loadAgentName();
+      await loadHistory(nextAgentName);
     };
 
     loadAgent();
@@ -143,7 +172,10 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
         return nextMessages;
       });
 
+    if(AppState.currentState !== 'active'){
       await notifyBotReplyReady(response.agent || agentName);
+    }
+      
       await loadHistory();
     } catch (chatError) {
       setError(chatError instanceof Error ? chatError.message : `Unable to chat with ${agentName}`);
@@ -152,12 +184,99 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
     }
   };
 
+  const startEditingName = () => {
+    setNameDraft(agentName);
+    setEditingName(true);
+    setError('');
+  };
+
+  const cancelEditingName = () => {
+    setNameDraft(agentName);
+    setEditingName(false);
+    setError('');
+  };
+
+  const saveAgentName = async () => {
+    const trimmedName = nameDraft.trim();
+    if (!trimmedName || nameSaving) {
+      setError('Agent name is required.');
+      return;
+    }
+
+    if (!session) {
+      setError('Please sign in again to edit your agent name.');
+      return;
+    }
+
+    try {
+      setNameSaving(true);
+      setError('');
+      const response = await updateAgentName(session, trimmedName);
+      const nextAgentName =
+        response.agent_name?.trim() ||
+        response.agent?.trim() ||
+        response.name?.trim() ||
+        trimmedName;
+      applyAgentName(nextAgentName);
+      setEditingName(false);
+    } catch (nameError) {
+      setError(nameError instanceof Error ? nameError.message : 'Unable to update agent name');
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
   return (
     <>
       <View style={styles.chatShell}>
         <View style={styles.header}>
           <View style={styles.headerText}>
-            <Text style={styles.title}>{agentName}</Text>
+            {editingName ? (
+              <View style={styles.nameEditRow}>
+                <TextInput
+                  accessibilityLabel="Agent name"
+                  editable={!nameSaving}
+                  maxLength={100}
+                  onChangeText={setNameDraft}
+                  placeholder="Agent name"
+                  placeholderTextColor="#777895"
+                  style={styles.nameInput}
+                  value={nameDraft}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={nameSaving}
+                  onPress={saveAgentName}
+                  style={[styles.nameIconButton, nameSaving && styles.disabledButton]}
+                >
+                  {nameSaving ? (
+                    <ActivityIndicator color={colors.offWhite} size="small" />
+                  ) : (
+                    <Text style={styles.nameIconText}>Save</Text>
+                  )}
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={nameSaving}
+                  onPress={cancelEditingName}
+                  style={[styles.nameIconButton, nameSaving && styles.disabledButton]}
+                >
+                  <Text style={styles.nameIconText}>Cancel</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.nameRow}>
+                <Text numberOfLines={1} style={styles.title}>{agentName}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit agent name"
+                  onPress={startEditingName}
+                  style={styles.editNameButton}
+                >
+                  <Text style={styles.editNameText}>Edit</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
           <Pressable
             accessibilityRole="button"
@@ -564,11 +683,65 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
   },
+  nameRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  nameEditRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
   title: {
     color: colors.offWhite,
+    flexShrink: 1,
     fontFamily: fonts.heading,
     fontSize: 21,
     lineHeight: 25,
+  },
+  editNameButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,107,74,0.14)',
+    borderColor: 'rgba(255,107,74,0.34)',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 28,
+    paddingHorizontal: 9,
+  },
+  editNameText: {
+    color: colors.coral,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
+  },
+  nameInput: {
+    backgroundColor: '#202247',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: colors.offWhite,
+    flex: 1,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 14,
+    minHeight: 34,
+    paddingHorizontal: 10,
+  },
+  nameIconButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    minWidth: 48,
+    paddingHorizontal: 8,
+  },
+  nameIconText: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
   },
   subtitle: {
     color: colors.textSoft,
