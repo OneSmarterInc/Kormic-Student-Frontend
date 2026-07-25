@@ -11,7 +11,8 @@
       "bundleIdentifier": "com.kormic.student"
     },
     "android": {
-      "package": "com.kormic.student"
+      "package": "com.kormic.student",
+      "googleServicesFile":"./firebase/google-services.json"
     },
     "plugins": [
       "expo-font",

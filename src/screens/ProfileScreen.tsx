@@ -836,7 +836,7 @@ export function ProfileScreen({
       <ScreenShell>
         <View style={styles.loadingState}>
           <ActivityIndicator color={colors.coral} />
-          <Text style={styles.loadingText}>Loading your complete profile...</Text>
+          <Text style={styles.loadingText}>Loading your agent...</Text>
         </View>
       </ScreenShell>
     );

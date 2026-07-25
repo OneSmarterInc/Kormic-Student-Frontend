@@ -1,9 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Platform, AppState } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  Platform,
+  AppState,
+} from 'react-native';
 import { AuthSession } from '../models/onboarding';
-import { AriaHistoryMessage, chatWithAria, getAgentName, getAriaHistory, updateAgentName } from '../services/api';
+import {
+  AriaHistoryMessage,
+  chatWithAria,
+  getAgentName,
+  getAriaHistory,
+  updateAgentName,
+} from '../services/api';
 import { colors, fonts } from '../theme/tokens';
-import { notifyBotReplyReady } from '../services/notifications';
 
 type ChatMessage = {
   id: string;
@@ -38,7 +53,7 @@ const getWelcomeMessage = (agentName: string): ChatMessage => ({
 });
 const ariaMessageCache = new Map<string, ChatMessage[]>();
 
-export function AriaBotScreen({ session }: { session?: AuthSession }) {
+export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSession; refreshKey?: number }) {
   const cachedMessages = getCachedAriaMessages(session);
   const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME);
   const [messages, setMessages] = useState<ChatMessage[]>(
@@ -61,9 +76,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
     setAgentName(nextAgentName);
     setNameDraft(nextAgentName);
     setMessages((current) =>
-      current.length === 1 && current[0]?.id === 'welcome'
-        ? [getWelcomeMessage(nextAgentName)]
-        : current,
+      current.length === 1 && current[0]?.id === 'welcome' ? [getWelcomeMessage(nextAgentName)] : current,
     );
   };
 
@@ -76,10 +89,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
     try {
       const response = await getAgentName(session);
       const nextAgentName =
-        response.agent_name?.trim() ||
-        response.agent?.trim() ||
-        response.name?.trim() ||
-        DEFAULT_AGENT_NAME;
+        response.agent_name?.trim() || response.agent?.trim() || response.name?.trim() || DEFAULT_AGENT_NAME;
       applyAgentName(nextAgentName);
       return nextAgentName;
     } catch {
@@ -117,7 +127,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
 
     loadAgent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.access, session?.user?.student_id]);
+ }, [session?.access, session?.user?.student_id, refreshKey]);
 
   const sendMessage = async () => {
     const message = draft.trim();
@@ -172,10 +182,6 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
         return nextMessages;
       });
 
-    if(AppState.currentState !== 'active'){
-      await notifyBotReplyReady(response.agent || agentName);
-    }
-      
       await loadHistory();
     } catch (chatError) {
       setError(chatError instanceof Error ? chatError.message : `Unable to chat with ${agentName}`);
@@ -213,10 +219,7 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
       setError('');
       const response = await updateAgentName(session, trimmedName);
       const nextAgentName =
-        response.agent_name?.trim() ||
-        response.agent?.trim() ||
-        response.name?.trim() ||
-        trimmedName;
+        response.agent_name?.trim() || response.agent?.trim() || response.name?.trim() || trimmedName;
       applyAgentName(nextAgentName);
       setEditingName(false);
     } catch (nameError) {
@@ -266,7 +269,9 @@ export function AriaBotScreen({ session }: { session?: AuthSession }) {
               </View>
             ) : (
               <View style={styles.nameRow}>
-                <Text numberOfLines={1} style={styles.title}>{agentName}</Text>
+                <Text numberOfLines={1} style={styles.title}>
+                  {agentName}
+                </Text>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Edit agent name"

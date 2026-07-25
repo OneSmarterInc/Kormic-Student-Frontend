@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "589205158811",
+    "project_id": "kormic-89814",
+    "storage_bucket": "kormic-89814.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:589205158811:android:a659bbb01db7a1880ebf3e",
+        "android_client_info": {
+          "package_name": "com.kormic.student"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyClWbndO3AadC3rtBigGR59q0lJzZdaakk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

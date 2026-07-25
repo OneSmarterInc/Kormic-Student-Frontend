@@ -27,6 +27,13 @@ import { colors, fonts } from './theme/tokens';
 import TotpScreen from './screens/TotpSetupScreen';
 import { AuthSession } from './models/onboarding';
 import { isBasicInfoComplete } from './utils/validation';
+import {
+  addNotificationTapListener,
+  registerForPushNotifications,
+  shouldOpenAgentChatFromLastNotification,
+  unregisterPushNotifications,
+} from './services/notifications';
+
 const botIcon = require('./assets/bot.jpeg');
 
 function getFirstMissingOnboardingRoute(session: AuthSession): OnboardingRoute {
@@ -132,6 +139,7 @@ export default function App() {
   const [basicInfoApiError, setBasicInfoApiError] = useState('');
   const [restoringSession, setRestoringSession] = useState(true);
   const [botReturnRoute, setBotReturnRoute] = useState<OnboardingRoute>('Profile');
+  const [botNotificationRefreshKey, setBotNotificationRefreshKey] = useState(0);
   const [profileAriaActive, setProfileAriaActive] = useState(false);
   const services = useMemo(() => mockOnboardingServices, []);
 
@@ -141,6 +149,7 @@ export default function App() {
     setBotReturnRoute(state.route === 'BotScreen' ? botReturnRoute : state.route);
     navigate('BotScreen');
   }, [botReturnRoute, navigate, state.route]);
+
   const closeBotScreen = useCallback(() => {
     navigate(botReturnRoute);
   }, [botReturnRoute, navigate]);
@@ -206,6 +215,9 @@ export default function App() {
       await saveTokens(nextSession);
       dispatch({ type: 'SET_AUTH_SESSION', session: nextSession });
       const nextRoute = getFirstMissingOnboardingRoute(nextSession);
+      registerForPushNotifications(nextSession).catch((error) => {
+  console.log('[notifications] register failed:', error);
+});
       navigate(nextRoute);
       if (nextRoute === 'Profile') {
         loadProfileForSession(nextSession);
@@ -254,12 +266,25 @@ export default function App() {
     [loadProfileForSession, state.authSession],
   );
   const logout = useCallback(async () => {
+    try {
+      await unregisterPushNotifications(state.authSession);
+    } catch {
+      // Logout should still clear local auth even if the notification token is already inactive or the network fails.
+    }
     await clearSavedTokens();
     setProfile(undefined);
     setProfileError('');
     setProfileLoading(false);
     dispatch({ type: 'LOGOUT' });
-  }, []);
+  }, [state.authSession]);
+
+  useEffect(() => {
+    return addNotificationTapListener(() => {
+      setBotReturnRoute('Profile');
+      setBotNotificationRefreshKey((current) => current + 1);
+      navigate('BotScreen');
+    });
+  }, [navigate]);
 
   useEffect(() => {
     let active = true;
@@ -298,8 +323,19 @@ export default function App() {
           totpRequired: false,
         };
         dispatch({ type: 'SET_AUTH_SESSION', session });
+        registerForPushNotifications(session).catch((error) => {
+  console.log('[notifications] register failed:', error);
+});
         const route = getFirstMissingOnboardingRoute(session);
-        navigate(route);
+        const openChat = await shouldOpenAgentChatFromLastNotification();
+
+        if (openChat) {
+          setBotReturnRoute('Profile');
+          setBotNotificationRefreshKey((current) => current + 1);
+          navigate('BotScreen');
+        } else {
+          navigate(route);
+        }
         if (route === 'Profile') {
           await loadProfileForSession(session);
         }
@@ -390,7 +426,13 @@ export default function App() {
           />
         );
       case 'BotScreen':
-        return <BotScreen session={state.authSession} onBack={closeBotScreen} />;
+        return (
+          <BotScreen
+            session={state.authSession}
+            onBack={closeBotScreen}
+            refreshKey={botNotificationRefreshKey}
+          />
+        );
     }
   })();
 
@@ -411,7 +453,15 @@ export default function App() {
   );
 }
 
-function BotScreen({ session, onBack }: { session?: AuthSession; onBack: () => void }) {
+function BotScreen({
+  session,
+  onBack,
+  refreshKey,
+}: {
+  session?: AuthSession;
+  onBack: () => void;
+  refreshKey: number;
+}) {
   return (
     <View style={styles.botScreen}>
       <View style={styles.botTopBar}>
@@ -427,7 +477,7 @@ function BotScreen({ session, onBack }: { session?: AuthSession; onBack: () => v
       </View>
 
       <View style={styles.botContent}>
-        <AriaBotScreen session={session} />
+        <AriaBotScreen session={session} refreshKey={refreshKey} />
       </View>
     </View>
   );
