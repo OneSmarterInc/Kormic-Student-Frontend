@@ -106,7 +106,7 @@ export async function registerForPushNotifications(session?: AuthSession) {
     isDevice: Device.isDevice,
     platform: Platform.OS,
     user: session?.user,
-    apiBaseUrl: API_BASE_URL,
+    apiBaseUrl: API_BASE_URL, 
   });
 
   if (!session?.access) {

@@ -4,7 +4,7 @@ import { parseGraduationYear } from '../utils/validation';
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
-const DEFAULT_API_BASE_URL = 'https://killing-derek-drawing-surgeons.trycloudflare.com/api';
+const DEFAULT_API_BASE_URL = 'https://kormic.ositicketing.com/api';
 
 export const API_BASE_URL =
   typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL : DEFAULT_API_BASE_URL;
@@ -859,6 +859,18 @@ export function getAriaHistory(session: AuthSession) {
       headers: authHeaders(accessToken),
     }),
     'Unable to load agent chat history',
+  );
+}
+
+export function clearAriaChat(session: AuthSession) {
+  return requestWithSession<{ detail?: string; message?: string; status?: string }>(
+    session,
+    '/chat/agent/new/',
+    (accessToken) => ({
+      method: 'POST',
+      headers: authHeaders(accessToken),
+    }),
+    'Unable to clear agent chat',
   );
 }
 

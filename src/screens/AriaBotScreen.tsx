@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,11 +16,14 @@ import { AuthSession } from '../models/onboarding';
 import {
   AriaHistoryMessage,
   chatWithAria,
+  clearAriaChat,
   getAgentName,
   getAriaHistory,
   updateAgentName,
 } from '../services/api';
 import { colors, fonts } from '../theme/tokens';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { MaterialIcons } from '@expo/vector-icons';
 
 type ChatMessage = {
   id: string;
@@ -53,7 +58,21 @@ const getWelcomeMessage = (agentName: string): ChatMessage => ({
 });
 const ariaMessageCache = new Map<string, ChatMessage[]>();
 
-export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSession; refreshKey?: number }) {
+export function AriaBotScreen({
+  session,
+  refreshKey = 0,
+  onAgentNameChange,
+  headerCommand,
+  hideHeader = false,
+  onHeaderCommandHandled,
+}: {
+  session?: AuthSession;
+  refreshKey?: number;
+  onAgentNameChange?: (agentName: string) => void;
+  headerCommand?: AriaHeaderCommand;
+  onHeaderCommandHandled?: () => void;
+  hideHeader?: boolean;
+}) {
   const cachedMessages = getCachedAriaMessages(session);
   const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME);
   const [messages, setMessages] = useState<ChatMessage[]>(
@@ -65,16 +84,32 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [clearLoading, setClearLoading] = useState(false);
+  const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(DEFAULT_AGENT_NAME);
   const [nameSaving, setNameSaving] = useState(false);
   const [error, setError] = useState('');
+  const messagesScrollRef = useRef<ScrollView | null>(null);
+  const shouldScrollMessagesToEndRef = useRef(true);
   const historyThreads = useMemo(() => buildAriaThreads(historyMessages), [historyMessages]);
   const groupedThreads = useMemo(() => groupThreadsByDate(historyThreads), [historyThreads]);
+
+  const scrollMessagesToEnd = (animated = true) => {
+    requestAnimationFrame(() => {
+      messagesScrollRef.current?.scrollToEnd({ animated });
+    });
+  };
+
+  useEffect(() => {
+    shouldScrollMessagesToEndRef.current = true;
+  }, [messages.length, loading, historyLoading]);
 
   const applyAgentName = (nextAgentName: string) => {
     setAgentName(nextAgentName);
     setNameDraft(nextAgentName);
+    onAgentNameChange?.(nextAgentName);
+
     setMessages((current) =>
       current.length === 1 && current[0]?.id === 'welcome' ? [getWelcomeMessage(nextAgentName)] : current,
     );
@@ -98,36 +133,80 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
     }
   };
 
-  const loadHistory = async (nextAgentName = agentName) => {
-    if (!session) {
-      return;
-    }
+ const loadHistory = async (nextAgentName = agentName, syncActiveChat = false) => {
+  if (!session) return;
 
-    try {
-      setHistoryLoading(true);
-      setError('');
-      const history = await getAriaHistory(session);
-      const historyMessages = normalizeAriaHistory(history.messages ?? []);
-      setHistoryMessages(historyMessages);
-      cacheAriaMessages(session, historyMessages);
-      setSelectedThreadId(undefined);
+  try {
+    setHistoryLoading(true);
+    setError('');
+
+    const history = await getAriaHistory(session);
+    const historyMessages = normalizeAriaHistory(history.messages ?? []);
+
+    setHistoryMessages(historyMessages);
+    cacheAriaMessages(session, historyMessages);
+    setSelectedThreadId(undefined);
+
+    if (syncActiveChat) {
       setMessages(historyMessages.length > 0 ? historyMessages : [getWelcomeMessage(nextAgentName)]);
-    } catch (historyError) {
-      setError(historyError instanceof Error ? historyError.message : 'Unable to load agent chat history');
-    } finally {
-      setHistoryLoading(false);
     }
-  };
+  } catch (historyError) {
+    setError(historyError instanceof Error ? historyError.message : 'Unable to load agent chat history');
+  } finally {
+    setHistoryLoading(false);
+  }
+};
 
   useEffect(() => {
     const loadAgent = async () => {
       const nextAgentName = await loadAgentName();
-      await loadHistory(nextAgentName);
+      await loadHistory(nextAgentName, false);
     };
 
     loadAgent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [session?.access, session?.user?.student_id, refreshKey]);
+  }, [session?.access, session?.user?.student_id, refreshKey]);
+
+  const clearChat = async () => {
+    if (!session || clearLoading) {
+      return;
+    }
+
+    try {
+      setClearLoading(true);
+      setError('');
+      await clearAriaChat(session);
+
+      const welcomeMessage = getWelcomeMessage(agentName);
+      setMessages([welcomeMessage]);
+      setHistoryMessages([]);
+      setSelectedThreadId(undefined);
+      setSidebarOpen(false);
+      cacheAriaMessages(session, []);
+    } catch (clearError) {
+      setError(clearError instanceof Error ? clearError.message : 'Unable to clear agent chat');
+    } finally {
+      setClearLoading(false);
+    }
+  };
+
+  const confirmClearChat = () => {
+    if (!session || clearLoading || loading || historyLoading) {
+      return;
+    }
+    setClearConfirmVisible(true);
+  };
+
+  const closeClearConfirm = () => {
+    if (!clearLoading) {
+      setClearConfirmVisible(false);
+    }
+  };
+
+  const clearConfirmedChat = async () => {
+    await clearChat();
+    setClearConfirmVisible(false);
+  };
 
   const sendMessage = async () => {
     const message = draft.trim();
@@ -164,7 +243,7 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
 
       const response = await chatWithAria(session, message);
       if (response.agent?.trim()) {
-        setAgentName(response.agent.trim());
+        applyAgentName(response.agent.trim());
       }
       const ariaMessage: ChatMessage = {
         id: `aria-${Date.now()}`,
@@ -195,6 +274,23 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
     setEditingName(true);
     setError('');
   };
+
+  useEffect(() => {
+    if (!headerCommand) {
+      return;
+    }
+
+    if (headerCommand.type === 'edit') {
+      startEditingName();
+      onHeaderCommandHandled?.();
+      return;
+    }
+
+    if (headerCommand.type === 'history') {
+      setSidebarOpen((current) => !current);
+      onHeaderCommandHandled?.();
+    }
+  }, [headerCommand?.id]);
 
   const cancelEditingName = () => {
     setNameDraft(agentName);
@@ -231,68 +327,33 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
 
   return (
     <>
-      <View style={styles.chatShell}>
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            {editingName ? (
-              <View style={styles.nameEditRow}>
-                <TextInput
-                  accessibilityLabel="Agent name"
-                  editable={!nameSaving}
-                  maxLength={100}
-                  onChangeText={setNameDraft}
-                  placeholder="Agent name"
-                  placeholderTextColor="#777895"
-                  style={styles.nameInput}
-                  value={nameDraft}
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={nameSaving}
-                  onPress={saveAgentName}
-                  style={[styles.nameIconButton, nameSaving && styles.disabledButton]}
-                >
-                  {nameSaving ? (
-                    <ActivityIndicator color={colors.offWhite} size="small" />
-                  ) : (
-                    <Text style={styles.nameIconText}>Save</Text>
-                  )}
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={nameSaving}
-                  onPress={cancelEditingName}
-                  style={[styles.nameIconButton, nameSaving && styles.disabledButton]}
-                >
-                  <Text style={styles.nameIconText}>Cancel</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <View style={styles.nameRow}>
-                <Text numberOfLines={1} style={styles.title}>
-                  {agentName}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Edit agent name"
-                  onPress={startEditingName}
-                  style={styles.editNameButton}
-                >
-                  <Text style={styles.editNameText}>Edit</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setSidebarOpen((current) => !current)}
-            style={[styles.historyToggle, sidebarOpen && styles.historyToggleActive]}
-          >
-            <Text style={styles.historyToggleText}>{sidebarOpen ? 'Close' : 'History'}</Text>
-          </Pressable>
-        </View>
-
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+        style={styles.chatShell}
+      >
         <View style={styles.container}>
+          {!sidebarOpen ? (
+            <View style={styles.clearChatButtonWrap}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={clearLoading || loading || historyLoading}
+                onPress={confirmClearChat}
+                accessibilityLabel="Clear chat"
+                style={[
+                  styles.clearChatButton,
+                  (clearLoading || loading || historyLoading) && styles.disabledButton,
+                ]}
+              >
+                {clearLoading ? (
+                  <ActivityIndicator color={colors.offWhite} size="small" />
+                ) : (
+                  <MaterialIcons name="delete-outline" size={19} color={colors.coral} />
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+
           {sidebarOpen ? (
             <RecentChatSidebar
               agentName={agentName}
@@ -300,7 +361,7 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
               historyLoading={historyLoading}
               selectedThreadId={selectedThreadId}
               onClose={() => setSidebarOpen(false)}
-              onRefresh={loadHistory}
+              onRefresh={() => loadHistory(agentName, true)}
               onSelect={(thread) => {
                 setSelectedThreadId(thread.id);
                 setMessages(thread.messages);
@@ -309,7 +370,17 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
             />
           ) : (
             <>
-              <ScrollView style={styles.messages} contentContainerStyle={styles.messageContent}>
+              <ScrollView
+                ref={messagesScrollRef}
+                style={styles.messages}
+                contentContainerStyle={styles.messageContent}
+                onContentSizeChange={() => {
+                  if (shouldScrollMessagesToEndRef.current) {
+                    scrollMessagesToEnd(!historyLoading);
+                    shouldScrollMessagesToEndRef.current = false;
+                  }
+                }}
+              >
                 {historyLoading ? (
                   <View style={styles.messageRow}>
                     <View style={[styles.bubble, styles.ariaBubble, styles.loadingBubble]}>
@@ -366,6 +437,73 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
                     ))}
                   </ScrollView>
                 ) : null}
+
+                <Modal
+                  animationType="fade"
+                  transparent
+                  visible={editingName}
+                  onRequestClose={() => {
+                    if (!nameSaving) cancelEditingName();
+                  }}
+                >
+                  <View style={styles.modalOverlay}>
+                    <View style={styles.agentNameModal}>
+                      <Text style={styles.modalTitle}>Edit agent name</Text>
+                      <Text style={styles.modalCaption}>Update the name shown in your agent chat.</Text>
+
+                      <TextInput
+                        accessibilityLabel="Agent name"
+                        autoCapitalize="words"
+                        editable={!nameSaving}
+                        maxLength={100}
+                        onChangeText={setNameDraft}
+                        placeholder="Agent name"
+                        placeholderTextColor="#777895"
+                        style={styles.modalInput}
+                        value={nameDraft}
+                      />
+
+                      <View style={styles.modalActions}>
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={nameSaving}
+                          onPress={cancelEditingName}
+                          style={[styles.modalSecondaryButton, nameSaving && styles.disabledButton]}
+                        >
+                          <Text style={styles.modalSecondaryText}>Cancel</Text>
+                        </Pressable>
+
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={nameSaving}
+                          onPress={saveAgentName}
+                          style={[styles.modalPrimaryButton, nameSaving && styles.disabledButton]}
+                        >
+                          {nameSaving ? (
+                            <ActivityIndicator color="#10112A" size="small" />
+                          ) : (
+                            <Text style={styles.modalPrimaryText}>Save</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                </Modal>
+
+                <ConfirmModal
+                  visible={clearConfirmVisible}
+                  title="Clear chat?"
+                  message={`This will permanently clear your ${agentName} chat history.`}
+                  primaryLabel="Clear chat"
+                  secondaryLabel="Cancel"
+                  primaryLoading={clearLoading}
+                  onPrimary={() => {
+                    void clearConfirmedChat();
+                  }}
+                  onSecondary={closeClearConfirm}
+                  onRequestClose={closeClearConfirm}
+                />
+
                 <View style={styles.composerBox}>
                   <TextInput
                     accessibilityLabel={`Message ${agentName}`}
@@ -396,7 +534,7 @@ export function AriaBotScreen({ session, refreshKey = 0 }: { session?: AuthSessi
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </>
   );
 }
@@ -421,26 +559,27 @@ function RecentChatSidebar({
   return (
     <View style={styles.sidebar}>
       <View style={styles.sidebarHeader}>
-        <View>
+        <View style={styles.sidebarTitleRow}>
           <Text style={styles.sidebarTitle}>Recent chats</Text>
+          <Pressable
+            accessibilityLabel="Refresh recent chats"
+            accessibilityRole="button"
+            disabled={historyLoading}
+            onPress={onRefresh}
+            style={[styles.refreshButton, historyLoading && styles.disabledButton]}
+          >
+            {historyLoading ? (
+              <ActivityIndicator color={colors.offWhite} size="small" />
+            ) : (
+              <MaterialIcons name="refresh" size={18} color={colors.offWhite} />
+            )}
+          </Pressable>
         </View>
+
         <Pressable accessibilityRole="button" onPress={onClose} style={styles.sidebarIconButton}>
           <Text style={styles.sidebarIconText}>x</Text>
         </Pressable>
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        disabled={historyLoading}
-        onPress={onRefresh}
-        style={[styles.refreshButton, historyLoading && styles.disabledButton]}
-      >
-        {historyLoading ? (
-          <ActivityIndicator color={colors.offWhite} size="small" />
-        ) : (
-          <Text style={styles.refreshText}>Refresh history</Text>
-        )}
-      </Pressable>
 
       {groupedThreads.length === 0 && !historyLoading ? (
         <Text style={styles.emptyText}>No recent {agentName} chats yet.</Text>
@@ -662,6 +801,7 @@ function formatChatTime(value: string) {
 
 const styles = StyleSheet.create({
   chatShell: {
+    flex: 1,
     backgroundColor: 'rgba(255,255,255,0.035)',
     borderColor: 'rgba(255,255,255,0.10)',
     borderRadius: 8,
@@ -669,10 +809,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   container: {
+    flex: 1,
     backgroundColor: '#0F1026',
     flexDirection: 'column',
     gap: 0,
-    height: 680,
+    maxHeight: 720,
   },
   header: {
     alignItems: 'center',
@@ -684,41 +825,6 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingHorizontal: 12,
     paddingVertical: 10,
-  },
-  headerText: {
-    flex: 1,
-  },
-  nameRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  nameEditRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  title: {
-    color: colors.offWhite,
-    flexShrink: 1,
-    fontFamily: fonts.heading,
-    fontSize: 21,
-    lineHeight: 25,
-  },
-  editNameButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,107,74,0.14)',
-    borderColor: 'rgba(255,107,74,0.34)',
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    minHeight: 28,
-    paddingHorizontal: 9,
-  },
-  editNameText: {
-    color: colors.coral,
-    fontFamily: fonts.bodyMedium,
-    fontSize: 11,
   },
   nameInput: {
     backgroundColor: '#202247',
@@ -765,18 +871,30 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.14)',
     borderRadius: 8,
     borderWidth: 1,
+    height: 34,
     justifyContent: 'center',
-    minHeight: 30,
-    paddingHorizontal: 12,
+    minHeight: 34,
+    width: 34,
   },
   historyToggleActive: {
     backgroundColor: 'rgba(255,107,74,0.14)',
     borderColor: 'rgba(255,107,74,0.32)',
   },
-  historyToggleText: {
-    color: colors.offWhite,
-    fontFamily: fonts.bodyMedium,
-    fontSize: 12,
+  clearChatButtonWrap: {
+    alignItems: 'flex-end',
+    width: '100%',
+  },
+  clearChatButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,107,74,0.14)',
+    borderColor: 'rgba(255,107,74,0.32)',
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    minHeight: 34,
+    width: 34,
+    margin: 8,
   },
   sidebar: {
     backgroundColor: '#151735',
@@ -810,14 +928,19 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: 8,
     borderWidth: 1,
-    height: 32,
+    height: 28,
     justifyContent: 'center',
-    width: 32,
+    width: 28,
   },
   sidebarIconText: {
     color: colors.textSoft,
     fontFamily: fonts.bodyMedium,
-    fontSize: 14,
+    fontSize: 18,
+  },
+  sidebarTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   refreshButton: {
     alignItems: 'center',
@@ -825,8 +948,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: 8,
     borderWidth: 1,
+    height: 34,
     justifyContent: 'center',
-    minHeight: 38,
+    width: 34,
   },
   refreshText: {
     color: colors.offWhite,
@@ -897,12 +1021,12 @@ const styles = StyleSheet.create({
   ariaBubble: {
     backgroundColor: '#181A3A',
     borderColor: 'rgba(255,255,255,0.11)',
-    maxWidth: '82%',
+    maxWidth: '92%',
   },
   userBubble: {
     backgroundColor: 'rgba(255,107,74,0.18)',
     borderColor: 'rgba(255,107,74,0.32)',
-    maxWidth: '82%',
+    maxWidth: '92%',
   },
   loadingBubble: {
     alignItems: 'center',
@@ -1019,5 +1143,81 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     textAlign: 'center',
+  },
+  modalOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 22,
+  },
+  agentNameModal: {
+    backgroundColor: '#181A38',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 12,
+    borderWidth: 1,
+    maxWidth: 420,
+    padding: 18,
+    width: '100%',
+  },
+  modalTitle: {
+    color: colors.offWhite,
+    fontFamily: fonts.heading,
+    fontSize: 22,
+    lineHeight: 27,
+  },
+  modalCaption: {
+    color: colors.textSoft,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  modalInput: {
+    backgroundColor: '#202247',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 15,
+    marginTop: 16,
+    minHeight: 48,
+    paddingHorizontal: 12,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'flex-end',
+    marginTop: 16,
+  },
+  modalSecondaryButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 42,
+    paddingHorizontal: 18,
+  },
+  modalSecondaryText: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+  },
+  modalPrimaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.coral,
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 42,
+    minWidth: 88,
+    paddingHorizontal: 20,
+  },
+  modalPrimaryText: {
+    color: '#10112A',
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
   },
 });

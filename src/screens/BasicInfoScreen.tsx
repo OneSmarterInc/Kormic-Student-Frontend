@@ -46,7 +46,7 @@ const fieldOptions = [
   { label: 'Electronics and Telecommunication', value: 'Electronics and Telecommunication' },
   { label: 'Mechanical Engineering', value: 'Mechanical Engineering' },
   { label: 'Civil Engineering', value: 'Civil Engineering' },
-  { label: 'Electrical Engineering', value: 'Electrical Engineering'},
+  { label: 'Electrical Engineering', value: 'Electrical Engineering' },
 ];
 
 const degreeLevelOptions = [
@@ -256,7 +256,9 @@ export function BasicInfoScreen({
                     fontSize: 15,
                   },
                 },
-                state.basicInfo.dateOfBirth ? formatDateForDisplay(state.basicInfo.dateOfBirth) : 'MM/DD/YYYY',
+                state.basicInfo.dateOfBirth
+                  ? formatDateForDisplay(state.basicInfo.dateOfBirth)
+                  : 'MM/DD/YYYY',
               ),
               React.createElement('span', { style: webDateIconStyle }, '▾'),
               React.createElement('input', {
@@ -275,7 +277,9 @@ export function BasicInfoScreen({
               style={[styles.dateButton, shownErrors.dateOfBirth ? styles.errorBorder : undefined]}
             >
               <Text style={[styles.dateButtonText, !state.basicInfo.dateOfBirth && styles.placeholderText]}>
-                {state.basicInfo.dateOfBirth ? formatDateForDisplay(state.basicInfo.dateOfBirth) : 'Select date of birth'}
+                {state.basicInfo.dateOfBirth
+                  ? formatDateForDisplay(state.basicInfo.dateOfBirth)
+                  : 'Select date of birth'}
               </Text>
             </Pressable>
           )}
@@ -296,7 +300,6 @@ export function BasicInfoScreen({
             />
           )}
         </View>
-    
 
         <SectionLabel>Your studies</SectionLabel>
         <DropdownField
@@ -370,7 +373,11 @@ export function BasicInfoScreen({
           onChangeText={update('targetDegreeOrField')}
           placeholder="MS in Computer Science"
         />
-        {shownErrors.api ? <Text style={styles.errorText}>{shownErrors.api}</Text> : null}
+        {shownErrors.api ? (
+          <Text style={styles.errorText}>{shownErrors.api}</Text>
+        ) : (
+          <Text>Something went wrong</Text>
+        )}
       </View>
     </ScreenShell>
   );
@@ -496,7 +503,7 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 14,
-    paddingBottom:174,
+    paddingBottom: 174,
   },
   dateField: {
     gap: 6,

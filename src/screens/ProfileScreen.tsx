@@ -26,9 +26,11 @@ import {
   updateProfileFields,
   uploadLinkedIn,
   uploadProfileImage,
+  getAgentName,
 } from '../services/api';
 import { OnboardingServices } from '../services/onboardingServices';
 import { colors, fonts, type } from '../theme/tokens';
+import { MaterialIcons } from '@expo/vector-icons';
 
 type Project = {
   title: string;
@@ -140,6 +142,11 @@ interface ProfileScreenProps {
 }
 
 type ProfileSection = 'overview' | 'edit' | 'resumes' | 'github' | 'linkedin' | 'aria';
+
+type AriaHeaderCommand = {
+  type: 'edit' | 'history';
+  id: number;
+};
 
 const EXTRACTED_DATA_SECTIONS = [
   {
@@ -424,6 +431,11 @@ export function ProfileScreen({
   const researchIntelligence = profile.research_intelligence ?? {};
   const skills = profile.technical_skills?.length ? profile.technical_skills : profile.skills;
   const [section, setSection] = useState<ProfileSection>('aria');
+  const [agentName, setAgentName] = useState('Aria');
+  const [ariaHeaderCommand, setAriaHeaderCommand] = useState<AriaHeaderCommand | undefined>();
+  const sendAriaHeaderCommand = (type: AriaHeaderCommand['type']) => {
+    setAriaHeaderCommand({ type, id: Date.now() });
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const [resumes, setResumes] = useState<ResumeRecord[]>([]);
   const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
@@ -484,6 +496,37 @@ export function ProfileScreen({
       budget: formatDraftValue(profile.budget),
     });
   }, [profile]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadAgentName = async () => {
+      if (!session) {
+        setAgentName('Aria');
+        return;
+      }
+
+      try {
+        const response = await getAgentName(session);
+        const nextAgentName =
+          response.agent_name?.trim() || response.agent?.trim() || response.name?.trim() || 'Aria';
+
+        if (active) {
+          setAgentName(nextAgentName);
+        }
+      } catch {
+        if (active) {
+          setAgentName('Aria');
+        }
+      }
+    };
+
+    loadAgentName();
+
+    return () => {
+      active = false;
+    };
+  }, [session]);
 
   const loadProfileImage = async () => {
     if (!session) {
@@ -866,23 +909,34 @@ export function ProfileScreen({
           <Text style={styles.menuIcon}>☰</Text>
         </Pressable>
 
-        {menuOpen ? (
-          <></>
-        ) : (
-          <Text style={styles.topBarTitle}>
-            {section === 'overview' ? 'Complete profile' : sectionTitle(section)}
-          </Text>
-        )}
+        {!menuOpen ? (
+          <>
+            <Text style={styles.topBarTitle} numberOfLines={1}>
+              {section === 'overview' ? 'Complete profile' : sectionTitle(section, agentName)}
+            </Text>
 
-        {onLogout ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Log out"
-            onPress={() => setLogoutConfirmVisible(true)}
-            style={styles.logoutButton}
-          >
-            <Text style={styles.logoutText}>Logout</Text>
-          </Pressable>
+            {section === 'aria' ? (
+              <View style={styles.topBarActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit agent name"
+                  onPress={() => sendAriaHeaderCommand('edit')}
+                  style={styles.topBarIconButton}
+                >
+                  <MaterialIcons name="edit" size={18} color={colors.offWhite} />
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open chat history"
+                  onPress={() => sendAriaHeaderCommand('history')}
+                  style={styles.topBarIconButton}
+                >
+                  <MaterialIcons name="history" size={19} color={colors.offWhite} />
+                </Pressable>
+              </View>
+            ) : null}
+          </>
         ) : null}
       </View>
 
@@ -898,7 +952,12 @@ export function ProfileScreen({
       />
 
       {menuOpen ? (
-        <ProfileMenu active={section} onSelect={selectSection} />
+        <ProfileMenu
+          active={section}
+          agentName={agentName}
+          onSelect={selectSection}
+          onLogout={onLogout ? () => setLogoutConfirmVisible(true) : undefined}
+        />
       ) : (
         <>
           {error ? <ProfileError message={error} onRetry={onRetry} loading={loading} /> : null}
@@ -994,7 +1053,15 @@ export function ProfileScreen({
             />
           ) : null}
 
-          {section === 'aria' ? <AriaBotScreen session={session} /> : null}
+          {section === 'aria' ? (
+            <AriaBotScreen
+              session={session}
+              onAgentNameChange={setAgentName}
+              headerCommand={ariaHeaderCommand}
+              onHeaderCommandHandled={() => setAriaHeaderCommand(undefined)}
+              hideHeader
+            />
+          ) : null}
 
           {section === 'overview' ? (
             <>
@@ -1417,7 +1484,7 @@ function getExperienceSummary(value: unknown) {
     .join('; ');
 }
 
-function sectionTitle(section: ProfileSection) {
+function sectionTitle(section: ProfileSection, agentName: string) {
   switch (section) {
     case 'overview':
       return 'Complete profile';
@@ -1430,19 +1497,23 @@ function sectionTitle(section: ProfileSection) {
     case 'linkedin':
       return 'LinkedIn';
     case 'aria':
-      return 'Chat with Agent';
+      return `Chat with ${agentName}`;
   }
 }
 
 function ProfileMenu({
   active,
+  agentName,
   onSelect,
+  onLogout,
 }: {
   active: ProfileSection;
+  agentName: string;
   onSelect: (section: ProfileSection) => void;
+  onLogout?: () => void;
 }) {
   const items: Array<{ key: ProfileSection; label: string }> = [
-    { key: 'aria', label: 'Chat with Agent' },
+    { key: 'aria', label: `Chat with ${agentName}` },
     { key: 'overview', label: 'Overview' },
     { key: 'edit', label: 'Edit Profile' },
     { key: 'resumes', label: 'Resume update/view' },
@@ -1465,6 +1536,16 @@ function ProfileMenu({
           </Text>
         </Pressable>
       ))}
+      {onLogout ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Log out"
+          onPress={onLogout}
+          style={[styles.sidebarItem, styles.sidebarLogoutItem]}
+        >
+          <Text style={[styles.sidebarItemText, styles.sidebarLogoutText]}>Logout</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -2769,6 +2850,23 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
+
+  topBarActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 24,
+  },
+  topBarIconButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
   menuButton: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -2832,6 +2930,9 @@ const styles = StyleSheet.create({
   },
   sidebarItemTextActive: {
     color: colors.coral,
+  },
+  sidebarLogoutText: {
+    color: colors.error,
   },
   sectionIntro: {
     color: colors.textSoft,
@@ -3008,6 +3109,7 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 10,
+    paddingBottom:34,
   },
   actionRow: {
     flexDirection: 'row',

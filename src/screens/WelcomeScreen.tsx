@@ -62,6 +62,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     gap: 14,
+    paddingBottom:24,
   },
   signIn: {
     color: colors.muted,
