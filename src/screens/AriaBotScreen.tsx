@@ -160,11 +160,10 @@ export function AriaBotScreen({
   useEffect(() => {
     const loadAgent = async () => {
       const nextAgentName = await loadAgentName();
-      await loadHistory(nextAgentName, false);
+      await  loadHistory(nextAgentName, true);
     };
 
     loadAgent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access, session?.user?.student_id, refreshKey]);
 
   const clearChat = async () => {

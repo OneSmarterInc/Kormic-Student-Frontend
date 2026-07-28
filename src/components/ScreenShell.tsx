@@ -33,6 +33,11 @@ export function ScreenShell({ children, footer, scroll = true }: ScreenShellProp
   );
 }
 
+const SIDE_PADDING = Platform.select({
+  web: 24,
+  default: 8,
+});
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -50,20 +55,20 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: SIDE_PADDING,
     paddingTop: 28,
     paddingBottom: 24,
   },
   staticContent: {
     flex: 1,
     width: '100%',
-    paddingHorizontal: 24,
+    paddingHorizontal: SIDE_PADDING,
     paddingTop: 28,
     paddingBottom: 24,
   },
   footer: {
     width: '100%',
-    paddingHorizontal: 24,
+    paddingHorizontal: SIDE_PADDING,
     paddingTop: 12,
     paddingBottom: 24,
     backgroundColor: colors.ink,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, Platform } from 'react-native';
 import { OnboardingRoute } from '../models/onboarding';
 import { getProgress } from '../navigation/routes';
 import { colors, fonts } from '../theme/tokens';
@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 24,
+    paddingHorizontal: Platform.OS === 'web' ? 24 : 12,
     paddingTop: 38,
     paddingBottom: 8,
     backgroundColor: colors.ink,

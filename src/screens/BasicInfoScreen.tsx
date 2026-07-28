@@ -375,9 +375,7 @@ export function BasicInfoScreen({
         />
         {shownErrors.api ? (
           <Text style={styles.errorText}>{shownErrors.api}</Text>
-        ) : (
-          <Text>Something went wrong</Text>
-        )}
+        ) :null}
       </View>
     </ScreenShell>
   );

@@ -1,12 +1,16 @@
 import React from 'react';
+import {MaterialIcons} from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '../theme/tokens';
 
 export function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
   return (
     <View style={styles.icon} pointerEvents="none">
-      <Text style={styles.eye}>◉</Text>
-      {!visible ? <View style={styles.slash} /> : null}
+      <MaterialIcons
+        name={visible ? 'visibility-off' : 'visibility'}
+        size={22}
+        color={colors.textSoft}
+      />
     </View>
   );
 }

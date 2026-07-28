@@ -3109,7 +3109,6 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 10,
-    paddingBottom:34,
   },
   actionRow: {
     flexDirection: 'row',

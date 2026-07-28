@@ -221,6 +221,6 @@ const styles = StyleSheet.create({
   },
 
   footer: {
-    marginBottom: 28,
+    marginBottom: 44,
   },
 });

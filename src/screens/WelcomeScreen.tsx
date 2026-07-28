@@ -61,7 +61,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   footer: {
-    gap: 14,
     paddingBottom:24,
   },
   signIn: {

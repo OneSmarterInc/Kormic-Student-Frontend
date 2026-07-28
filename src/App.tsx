@@ -32,6 +32,8 @@ import {
   registerForPushNotifications,
   shouldOpenAgentChatFromLastNotification,
   unregisterPushNotifications,
+  addNotificationReceivedListener,
+  pollNotifications,
 } from './services/notifications';
 
 const botIcon = require('./assets/bot.jpeg');
@@ -142,6 +144,7 @@ export default function App() {
   const [botNotificationRefreshKey, setBotNotificationRefreshKey] = useState(0);
   const [profileAriaActive, setProfileAriaActive] = useState(false);
   const services = useMemo(() => mockOnboardingServices, []);
+  const [notificationPollSince, setNotificationPollSince] = useState<string | undefined>();
 
   const navigate = useCallback((route: OnboardingRoute) => dispatch({ type: 'NAVIGATE', route }), []);
   const back = useCallback(() => dispatch({ type: 'BACK' }), []);
@@ -216,8 +219,8 @@ export default function App() {
       dispatch({ type: 'SET_AUTH_SESSION', session: nextSession });
       const nextRoute = getFirstMissingOnboardingRoute(nextSession);
       registerForPushNotifications(nextSession).catch((error) => {
-  console.log('[notifications] register failed:', error);
-});
+        console.log('[notifications] register failed:', error);
+      });
       navigate(nextRoute);
       if (nextRoute === 'Profile') {
         loadProfileForSession(nextSession);
@@ -279,6 +282,12 @@ export default function App() {
   }, [state.authSession]);
 
   useEffect(() => {
+    return addNotificationReceivedListener(() => {
+      setBotNotificationRefreshKey((current) => current + 1);
+    });
+  }, []);
+
+  useEffect(() => {
     return addNotificationTapListener(() => {
       setBotReturnRoute('Profile');
       setBotNotificationRefreshKey((current) => current + 1);
@@ -324,8 +333,8 @@ export default function App() {
         };
         dispatch({ type: 'SET_AUTH_SESSION', session });
         registerForPushNotifications(session).catch((error) => {
-  console.log('[notifications] register failed:', error);
-});
+          console.log('[notifications] register failed:', error);
+        });
         const route = getFirstMissingOnboardingRoute(session);
         const openChat = await shouldOpenAgentChatFromLastNotification();
 
@@ -354,6 +363,36 @@ export default function App() {
       active = false;
     };
   }, [loadProfileForSession, navigate]);
+
+  useEffect(() => {
+  if (!state.authSession?.access) return;
+
+  let cancelled = false;
+
+  const runPoll = async () => {
+    try {
+      const result = await pollNotifications(state.authSession, notificationPollSince);
+
+      if (cancelled) return;
+
+      setNotificationPollSince(result.nextSince);
+
+      if (result.hasAgentNotification) {
+        setBotNotificationRefreshKey((current) => current + 1);
+      }
+    } catch (error) {
+      console.log('[notifications] poll failed:', error);
+    }
+  };
+
+  runPoll();
+  const interval = setInterval(runPoll, 15000);
+
+  return () => {
+    cancelled = true;
+    clearInterval(interval);
+  };
+}, [state.authSession?.access, notificationPollSince]);
 
   if (!frauncesLoaded || !interLoaded || restoringSession) {
     return (

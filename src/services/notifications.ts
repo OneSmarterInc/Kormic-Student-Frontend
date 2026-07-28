@@ -199,6 +199,24 @@ export async function unregisterPushNotifications(session?: AuthSession) {
   await clearSavedPushToken();
 }
 
+export function addNotificationReceivedListener(onAgentNotification: () => void) {
+  const subscription = Notifications.addNotificationReceivedListener((notification) => {
+    const type = notification.request.content.data?.type;
+
+    console.log('[notifications] received foreground notification:', {
+      title: notification.request.content.title,
+      body: notification.request.content.body,
+      data: notification.request.content.data,
+    });
+
+    if (typeof type === 'string' && CHAT_NOTIFICATION_TYPES.includes(type)) {
+      onAgentNotification();
+    }
+  });
+
+  return () => subscription.remove();
+}
+
 export function addNotificationTapListener(onOpenAgentChat: () => void) {
   const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
     const type = response.notification.request.content.data?.type;
@@ -216,4 +234,82 @@ export async function shouldOpenAgentChatFromLastNotification() {
   const type = response?.notification.request.content.data?.type;
 
   return typeof type === 'string' && CHAT_NOTIFICATION_TYPES.includes(type);
+}
+
+type NotificationPayload = {
+  id?: number;
+  event_type?: string;
+  title?: string;
+  body?: string;
+  data?: Record<string, unknown>;
+  created_at?: string;
+};
+
+type NotificationPollResponse = {
+  results?: NotificationPayload[];
+  server_time?: string;
+};
+
+function getNotificationType(data: Record<string, unknown> | undefined, fallbackType?: unknown) {
+  const type = data?.type ?? fallbackType;
+  return typeof type === 'string' ? type : undefined;
+}
+
+function isAgentNotificationType(type: string | undefined) {
+  return Boolean(type && CHAT_NOTIFICATION_TYPES.includes(type));
+}
+
+export async function pollNotifications(session?: AuthSession, since?: string) {
+  if (!session?.access) {
+    return { nextSince: since, hasAgentNotification: false };
+  }
+
+  const params = new URLSearchParams({ limit: '20' });
+  if (since) params.set('since', since);
+
+  const response = await fetch(`${API_BASE_URL}/notifications/poll/?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${session.access}`,
+    },
+  });
+
+  const responseText = await response.text().catch(() => '');
+
+  console.log('[notifications] poll response', {
+    status: response.status,
+    ok: response.ok,
+    body: responseText,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Notification poll failed with status ${response.status}: ${responseText}`);
+  }
+
+  const data = responseText ? (JSON.parse(responseText) as NotificationPollResponse) : {};
+  const results = data.results ?? [];
+
+  const agentNotifications = results.filter((item) =>
+    isAgentNotificationType(getNotificationType(item.data, item.event_type)),
+  );
+
+  for (const item of agentNotifications) {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: item.title || 'Aria replied',
+        body: item.body || 'Your agent reply is ready.',
+        sound: 'default',
+        data: {
+          ...(item.data ?? {}),
+          type: getNotificationType(item.data, item.event_type) ?? 'agent_reply',
+        },
+      },
+      trigger: null,
+    });
+  }
+
+  return {
+    nextSince: data.server_time ?? since,
+    hasAgentNotification: agentNotifications.length > 0,
+  };
 }
