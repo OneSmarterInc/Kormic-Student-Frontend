@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, Platform } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, Platform, Modal } from 'react-native';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
@@ -7,6 +7,9 @@ import { TextField } from '../components/TextField';
 import { AuthSession, LinkedInScreenshot } from '../models/onboarding';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { AriaBotScreen } from './AriaBotScreen';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
 import {
   API_BASE_URL,
   analyzeGithub,
@@ -78,7 +81,7 @@ export type StudentProfile = {
   gre_verbal: number | null;
   toefl: number | null;
   ielts: number | null;
-  english_score?: string;
+  english_score?: string | number;
   english_score_text: string;
   budget: number | null;
   budget_text: string;
@@ -450,6 +453,7 @@ export function ProfileScreen({
   );
   const [profileImageLoading, setProfileImageLoading] = useState(false);
   const [resumesLoading, setResumesLoading] = useState(false);
+  const [resumeUploadLoading, setResumeUploadLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [sectionError, setSectionError] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState(profile.linkedin_url ?? '');
@@ -467,7 +471,7 @@ export function ProfileScreen({
     gre_verbal: formatDraftValue(profile.gre_verbal),
     toefl: formatDraftValue(profile.toefl),
     ielts: formatDraftValue(profile.ielts),
-    english_score_text: profile.english_score_text || profile.english_score || '',
+    english_score_text: String(firstProvidedValue(profile.english_score, profile.english_score_text) ?? ''),
     budget: formatDraftValue(profile.budget),
   });
 
@@ -668,7 +672,7 @@ export function ProfileScreen({
     }
 
     try {
-      setActionLoading(true);
+      setResumeUploadLoading(true);
       setSectionError('');
       const file = await services.cv.pickFile();
       await services.cv.upload(session, file);
@@ -677,30 +681,94 @@ export function ProfileScreen({
     } catch (uploadError) {
       setSectionError(uploadError instanceof Error ? uploadError.message : 'Unable to upload resume');
     } finally {
-      setActionLoading(false);
+      setResumeUploadLoading(false);
     }
   };
 
   const downloadResume = async (resume: ResumeRecord) => {
     if (!session) {
-      setSectionError('Please sign in again to download a resume.');
+      setSectionError('Please sign in again to view a resume.');
       return;
     }
 
     try {
       setActionLoading(true);
       setSectionError('');
-      const fileBlob = await downloadResumeFile(session, resume.id);
-      const fileUrl = URL.createObjectURL(fileBlob);
-      const link = document.createElement('a');
-      link.href = fileUrl;
-      link.download = resume.original_filename || `resume-${resume.id}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(fileUrl);
+
+      const filename = (resume.original_filename || `resume-${resume.id}.pdf`).replace(
+        /[^a-zA-Z0-9._-]/g,
+        '_',
+      );
+
+      const resumeUrl = `${API_BASE_URL}/profile/resume/${encodeURIComponent(String(resume.id))}/`;
+
+      if (Platform.OS === 'web') {
+        const fileBlob = await downloadResumeFile(session, resume.id);
+        const fileUrl = URL.createObjectURL(fileBlob);
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(fileUrl);
+        return;
+      }
+
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+
+      const downloaded = await FileSystem.downloadAsync(resumeUrl, fileUri, {
+        headers: {
+          Authorization: `Bearer ${session.access}`,
+        },
+      });
+
+      if (downloaded.status !== 200) {
+        setSectionError(`Unable to open resume. Server returned ${downloaded.status}.`);
+        return;
+      }
+
+      if (Platform.OS === 'android') {
+        try {
+          const contentUri = await FileSystem.getContentUriAsync(downloaded.uri);
+
+          await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+            data: contentUri,
+            flags: 1,
+            type: 'application/pdf',
+          });
+
+          return;
+        } catch {
+          const sharingAvailable = await Sharing.isAvailableAsync();
+
+          if (sharingAvailable) {
+            await Sharing.shareAsync(downloaded.uri, {
+              mimeType: 'application/pdf',
+              dialogTitle: 'Open resume',
+            });
+            return;
+          }
+
+          setSectionError('No PDF viewer app found on this device.');
+          return;
+        }
+      }
+
+      const sharingAvailable = await Sharing.isAvailableAsync();
+
+      if (!sharingAvailable) {
+        setSectionError('Resume downloaded, but this device cannot open sharing options.');
+        return;
+      }
+
+      await Sharing.shareAsync(downloaded.uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: 'Open resume',
+        UTI: 'com.adobe.pdf',
+      });
     } catch (downloadError) {
-      setSectionError(downloadError instanceof Error ? downloadError.message : 'Unable to download resume');
+      setSectionError(downloadError instanceof Error ? downloadError.message : 'Unable to open resume');
     } finally {
       setActionLoading(false);
     }
@@ -748,7 +816,7 @@ export function ProfileScreen({
       setSectionError('Please sign in again to update your profile.');
       return;
     }
-
+    const englishScoreValue = profileDraft.english_score_text.trim();
     try {
       setActionLoading(true);
       setSectionError('');
@@ -766,11 +834,22 @@ export function ProfileScreen({
         gre_verbal: toOptionalNumber(profileDraft.gre_verbal),
         toefl: toOptionalNumber(profileDraft.toefl),
         ielts: toOptionalNumber(profileDraft.ielts),
-        english_score_text: profileDraft.english_score_text.trim(),
-        english_score: profileDraft.english_score_text.trim(),
+        english_score: toOptionalNumber(englishScoreValue),
+        english_score_text: englishScoreValue,
         budget: toOptionalNumber(profileDraft.budget),
       });
-      await onProfileChanged?.(normalizeStudentProfile(updatedProfile));
+      await onProfileChanged?.(
+        normalizeStudentProfile({
+          ...updatedProfile,
+          english_score: updatedProfile.english_score ?? englishScoreValue,
+          english_score_text: updatedProfile.english_score_text || englishScoreValue,
+          profile: {
+            ...(updatedProfile.profile ?? {}),
+            english_score: updatedProfile.profile?.english_score ?? englishScoreValue,
+            english_score_text: updatedProfile.profile?.english_score_text || englishScoreValue,
+          },
+        }),
+      );
       setSection('overview');
     } catch (saveError) {
       setSectionError(saveError instanceof Error ? saveError.message : 'Unable to update profile');
@@ -969,6 +1048,7 @@ export function ProfileScreen({
               resumes={resumes}
               loading={resumesLoading}
               actionLoading={actionLoading}
+              uploadLoading={resumeUploadLoading}
               error={sectionError}
               onUpload={uploadNewResume}
               onDownload={downloadResume}
@@ -1124,7 +1204,7 @@ export function ProfileScreen({
                   <FieldRow label="IELTS" value={formatValue(profile.ielts)} />
                   <FieldRow
                     label="English score"
-                    value={profile.english_score_text || profile.english_score}
+                    value={formatValue(firstProvidedValue(profile.english_score, profile.english_score_text))}
                   />
                   <FieldRow
                     label="Budget"
@@ -1278,12 +1358,22 @@ function ProfileAvatar({
   );
 }
 
+function firstProvidedValue(...values: unknown[]) {
+  return values.find(
+    (value) =>
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== '' &&
+      String(value).trim().toLowerCase() !== 'not provided',
+  );
+}
+
 function normalizeStudentProfile(profile: StudentProfile | Record<string, unknown>): StudentProfile {
   const maybeWrappedProfile = (profile as Record<string, unknown>).profile;
   const wrapper = profile as Record<string, unknown>;
   const rawProfile =
     maybeWrappedProfile && typeof maybeWrappedProfile === 'object'
-      ? (maybeWrappedProfile as Record<string, unknown>)
+      ? { ...wrapper, ...(maybeWrappedProfile as Record<string, unknown>) }
       : wrapper;
   const evidence = getRecord(wrapper.evidence) || getRecord(rawProfile.evidence) || {};
   const resumeEvidence = getRecord(evidence.resume);
@@ -1357,7 +1447,24 @@ function normalizeStudentProfile(profile: StudentProfile | Record<string, unknow
       null,
     toefl: rawProfile.toefl ?? testScores.toefl ?? resumeEvidence?.toefl ?? manualProfile?.toefl ?? null,
     ielts: rawProfile.ielts ?? testScores.ielts ?? resumeEvidence?.ielts ?? manualProfile?.ielts ?? null,
-    english_score_text: rawProfile.english_score_text ?? testScores.english_score_text ?? '',
+    english_score_text:
+      firstProvidedValue(
+        rawProfile.english_score,
+        rawProfile.english_score_text,
+        testScores.english_score,
+        testScores.english_score_text,
+        manualProfile?.english_score,
+        manualProfile?.english_score_text,
+      ) ?? '',
+    english_score:
+      firstProvidedValue(
+        rawProfile.english_score,
+        rawProfile.english_score_text,
+        testScores.english_score,
+        testScores.english_score_text,
+        manualProfile?.english_score,
+        manualProfile?.english_score_text,
+      ) ?? '',
     budget: rawProfile.budget ?? financials.budget ?? resumeEvidence?.budget ?? manualProfile?.budget ?? null,
     budget_text: rawProfile.budget_text ?? financials.budget_text ?? '',
     work_months: rawProfile.work_months ?? workExperience.work_months ?? resumeEvidence?.work_months ?? null,
@@ -1731,6 +1838,7 @@ function ResumeManager({
   resumes,
   loading,
   actionLoading,
+  uploadLoading,
   error,
   onUpload,
   onDownload,
@@ -1740,6 +1848,7 @@ function ResumeManager({
   resumes: ResumeRecord[];
   loading: boolean;
   actionLoading: boolean;
+  uploadLoading: boolean;
   error: string;
   onUpload: () => void;
   onDownload: (resume: ResumeRecord) => void;
@@ -1755,12 +1864,23 @@ function ResumeManager({
         </Text>
       </View>
       <View style={styles.resumeActions}>
-        <PrimaryButton
-          label="Upload new resume"
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={uploadLoading ? 'Uploading resume' : 'Upload new resume'}
+          accessibilityState={{ disabled: uploadLoading, busy: uploadLoading }}
+          disabled={uploadLoading}
           onPress={onUpload}
-          disabled={actionLoading}
-          loading={actionLoading}
-        />
+          style={[styles.resumeUploadButton, uploadLoading && styles.resumeUploadButtonLoading]}
+        >
+          {uploadLoading ? (
+            <>
+              <ActivityIndicator color="#1A0F0A" size="small" />
+              <Text style={styles.resumeUploadButtonText}>Uploading...</Text>
+            </>
+          ) : (
+            <Text style={styles.resumeUploadButtonText}>Upload new resume</Text>
+          )}
+        </Pressable>
         <PrimaryButton
           label="Refresh resumes"
           onPress={onRefresh}
@@ -2337,25 +2457,50 @@ function LinkedinImageCard({
   caption?: string;
   accessToken?: string;
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const imageSource = uri
+    ? {
+        uri,
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      }
+    : undefined;
+
   return (
-    <View style={styles.linkedinImageCard}>
-      {uri ? (
-        <Image
-          source={{
-            uri,
-            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-          }}
-          style={styles.linkedinImage}
-          resizeMode="cover"
-        />
+    <Pressable
+      accessibilityRole={uri ? 'imagebutton' : undefined}
+      accessibilityLabel={uri ? `Open ${title}` : undefined}
+      disabled={!uri}
+      onPress={() => setPreviewOpen(true)}
+      style={styles.linkedinImageCard}
+    >
+      {imageSource ? (
+        <Image source={imageSource} style={styles.linkedinImage} resizeMode="cover" />
       ) : (
         <View style={styles.linkedinImagePlaceholder} />
       )}
+
       <Text numberOfLines={2} style={styles.linkedinImageTitle}>
         {title}
       </Text>
       {caption ? <Text style={styles.metaText}>{caption}</Text> : null}
-    </View>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={previewOpen}
+        onRequestClose={() => setPreviewOpen(false)}
+      >
+        <View style={styles.linkedinPreviewOverlay}>
+          <Pressable onPress={() => setPreviewOpen(false)} style={styles.linkedinPreviewClose}>
+            <Text style={styles.linkedinPreviewCloseText}>x</Text>
+          </Pressable>
+
+          {imageSource ? (
+            <Image source={imageSource} style={styles.linkedinPreviewImage} resizeMode="contain" />
+          ) : null}
+        </View>
+      </Modal>
+    </Pressable>
   );
 }
 
@@ -3567,5 +3712,54 @@ const styles = StyleSheet.create({
     color: colors.textSoft,
     fontFamily: fonts.body,
     fontSize: 12,
+  },
+  linkedinPreviewOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(5,6,18,0.96)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 18,
+  },
+  linkedinPreviewImage: {
+    height: '88%',
+    width: '100%',
+  },
+  linkedinPreviewClose: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 22,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 18,
+    top: 18,
+    width: 44,
+    zIndex: 2,
+  },
+  linkedinPreviewCloseText: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 22,
+    lineHeight: 24,
+  },
+  resumeUploadButton: {
+    alignItems: 'center',
+    backgroundColor: colors.coral,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+    minHeight: 52,
+    paddingHorizontal: 18,
+  },
+  resumeUploadButtonLoading: {
+    opacity: 0.78,
+  },
+  resumeUploadButtonText: {
+    color: '#1A0F0A',
+    fontFamily: fonts.bodyMedium,
+    fontSize: 15,
   },
 });
