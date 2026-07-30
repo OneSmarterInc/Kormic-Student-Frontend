@@ -3,3 +3,7 @@ node_modules/
 android/app/build/
 android/.gradle/
 *.log
+
+.env
+firebase/google-services.json
+android/app/google-services.json
