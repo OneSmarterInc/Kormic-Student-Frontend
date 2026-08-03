@@ -7,10 +7,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  Image,
   TextInput,
   View,
   Platform,
   AppState,
+  Linking,
 } from 'react-native';
 import { AuthSession } from '../models/onboarding';
 import {
@@ -20,17 +22,29 @@ import {
   getAgentName,
   getAriaHistory,
   updateAgentName,
+  AriaAttachment,
+  ChatAttachmentFile,
+  editAriaMessage,
 } from '../services/api';
 import { colors, fonts } from '../theme/tokens';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 
 type ChatMessage = {
   id: string;
+  serviceId?: number | string;
   role: 'user' | 'aria';
   text: string;
   createdAt?: string;
+  editedAt?: string | null;
+  attachments?: AriaAttachment[];
+  pending?: boolean;
+  queryId?: number | string | null;
+  confidence?: number | null;
 };
 
 type ChatThread = {
@@ -96,6 +110,75 @@ export function AriaBotScreen({
   const historyThreads = useMemo(() => buildAriaThreads(historyMessages), [historyMessages]);
   const groupedThreads = useMemo(() => groupThreadsByDate(historyThreads), [historyThreads]);
   const [copiedMessageId, setCopiedMessageId] = useState<string | undefined>();
+  const [selectedAttachments, setSelectedAttachments] = useState<ChatAttachmentFile[]>([]);
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | undefined>();
+  const [editDraft, setEditDraft] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+
+  const pickAttachments = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: true,
+        type: [
+          'image/png',
+          'image/jpeg',
+          'image/webp',
+          'image/gif',
+          'application/pdf',
+          'text/plain',
+          'text/markdown',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ],
+      });
+
+      if (result.canceled) return;
+
+      setSelectedAttachments((current) =>
+        [
+          ...current,
+          ...result.assets.map((asset) => ({
+            uri: asset.uri,
+            name: asset.name || 'attachment',
+            type: asset.mimeType || 'application/octet-stream',
+            size: asset.size,
+          })),
+        ].slice(0, 5),
+      );
+    } catch (pickError) {
+      setError(pickError instanceof Error ? pickError.message : 'Unable to select attachments.');
+    }
+  };
+
+  function isImageAttachment(attachment: AriaAttachment) {
+    const contentType = attachment.content_type?.toLowerCase() ?? '';
+    const filename = attachment.filename?.toLowerCase() ?? '';
+
+    return contentType.startsWith('image/') || /\.(png|jpg|jpeg|webp|gif)$/i.test(filename);
+  }
+
+  async function openProtectedAttachment(attachment: AriaAttachment, accessToken?: string) {
+    if (!attachment.url || !accessToken) return;
+
+    const extension =
+      attachment.filename?.split('.').pop() || (attachment.content_type?.includes('pdf') ? 'pdf' : 'file');
+
+    const localPath = `${FileSystem.cacheDirectory}${attachment.id}-${attachment.filename || `attachment.${extension}`}`;
+
+    const download = await FileSystem.downloadAsync(attachment.url, localPath, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(download.uri, {
+        mimeType: attachment.content_type,
+        dialogTitle: attachment.filename,
+      });
+    }
+  }
 
   const scrollMessagesToEnd = (animated = true) => {
     requestAnimationFrame(() => {
@@ -211,7 +294,9 @@ export function AriaBotScreen({
 
   const sendMessage = async () => {
     const message = draft.trim();
-    if (!message || loading) {
+    const pendingAttachments = selectedAttachments;
+
+    if ((!message && selectedAttachments.length === 0) || loading) {
       return;
     }
 
@@ -241,8 +326,9 @@ export function AriaBotScreen({
       });
       setSelectedThreadId(undefined);
       setDraft('');
+      setSelectedAttachments([]);
 
-      const response = await chatWithAria(session, message);
+      const response = await chatWithAria(session, message, pendingAttachments);
       if (response.agent?.trim()) {
         applyAgentName(response.agent.trim());
       }
@@ -262,7 +348,7 @@ export function AriaBotScreen({
         return nextMessages;
       });
 
-      await loadHistory();
+      await loadHistory(agentName, true);
     } catch (chatError) {
       setError(chatError instanceof Error ? chatError.message : `Unable to chat with ${agentName}`);
     } finally {
@@ -280,6 +366,37 @@ export function AriaBotScreen({
       }, 1600);
     } catch {
       setError('Unable to copy response.');
+    }
+  };
+
+  const startEditingMessage = (message: ChatMessage) => {
+    if (message.role !== 'user' || !message.serverId) return;
+    setEditingMessage(message);
+    setEditDraft(message.text);
+    setError('');
+  };
+
+  const cancelEditingMessage = () => {
+    if (editLoading) return;
+    setEditingMessage(undefined);
+    setEditDraft('');
+  };
+
+  const saveEditedMessage = async () => {
+    const nextText = editDraft.trim();
+    if (!session || !editingMessage?.serverId || !nextText || editLoading) return;
+
+    try {
+      setEditLoading(true);
+      setError('');
+      await editAriaMessage(session, editingMessage.serverId, nextText);
+      setEditingMessage(undefined);
+      setEditDraft('');
+      await loadHistory(agentName, true);
+    } catch (editError) {
+      setError(editError instanceof Error ? editError.message : 'Unable to edit message.');
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -413,6 +530,54 @@ export function AriaBotScreen({
                     >
                       <Text style={styles.bubbleLabel}>{message.role === 'user' ? 'You' : agentName}</Text>
                       <FormattedMessageText text={message.text} formatBold={message.role === 'aria'} />
+                      {message.attachments?.length ? (
+                        <View style={styles.attachmentList}>
+                          {message.attachments.map((attachment) =>
+                            isImageAttachment(attachment) && attachment.url ? (
+                              <Pressable
+                                key={String(attachment.id)}
+                                accessibilityRole="imagebutton"
+                                onPress={() => openProtectedAttachment(attachment, session?.access)}
+                                style={styles.imageAttachmentCard}
+                              >
+                                <Image
+                                  source={{
+                                    uri: attachment.url,
+                                    headers: session?.access
+                                      ? { Authorization: `Bearer ${session.access}` }
+                                      : undefined,
+                                  }}
+                                  style={styles.imageAttachment}
+                                  resizeMode="cover"
+                                />
+                                <Text numberOfLines={1} style={styles.imageAttachmentName}>
+                                  {attachment.filename}
+                                </Text>
+                              </Pressable>
+                            ) : (
+                              <Pressable
+                                key={String(attachment.id)}
+                                accessibilityRole="button"
+                                onPress={() => openProtectedAttachment(attachment, session?.access)}
+                                style={styles.attachmentChip}
+                              >
+                                <MaterialIcons
+                                  name={
+                                    attachment.content_type?.includes('pdf')
+                                      ? 'picture-as-pdf'
+                                      : 'attach-file'
+                                  }
+                                  size={14}
+                                  color={colors.offWhite}
+                                />
+                                <Text numberOfLines={1} style={styles.attachmentText}>
+                                  {attachment.filename}
+                                </Text>
+                              </Pressable>
+                            ),
+                          )}
+                        </View>
+                      ) : null}
                       <View style={styles.botResponse}>
                         {message.createdAt ? (
                           <Text style={styles.messageDate}>{formatChatDate(message.createdAt)}</Text>
@@ -436,8 +601,19 @@ export function AriaBotScreen({
                                 copiedMessageId === message.id && styles.copyButtonTextActive,
                               ]}
                             >
-                              {copiedMessageId === message.id ? 'Copied' : 'Copy'}
+                              {copiedMessageId === message.id ? 'Copied' : ''}
                             </Text>
+                          </Pressable>
+                        ) : null}
+
+                        {message.role === 'user' && message.serverId ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Edit message"
+                            onPress={() => startEditingMessage(message)}
+                            style={styles.copyButton}
+                          >
+                            <MaterialIcons name="edit" size={14} color={colors.textSoft} />
                           </Pressable>
                         ) : null}
                       </View>
@@ -529,6 +705,52 @@ export function AriaBotScreen({
                   </View>
                 </Modal>
 
+                <Modal
+                  animationType="fade"
+                  transparent
+                  visible={Boolean(editingMessage)}
+                  onRequestClose={cancelEditingMessage}
+                >
+                  <View style={styles.modalOverlay}>
+                    <View style={styles.agentNameModal}>
+                      <Text style={styles.modalTitle}>Edit message</Text>
+                      <Text style={styles.modalCaption}>
+                        Regenerate the reply from this point in the chat.
+                      </Text>
+                      <TextInput
+                        accessibilityLabel="Edited message"
+                        editable={!editLoading}
+                        multiline
+                        onChangeText={setEditDraft}
+                        placeholder="Edit your message"
+                        placeholderTextColor="#777895"
+                        style={[styles.modalInput, styles.editMessageInput]}
+                        value={editDraft}
+                      />
+                      <View style={styles.modalActions}>
+                        <Pressable
+                          disabled={editLoading}
+                          onPress={cancelEditingMessage}
+                          style={styles.modalSecondaryButton}
+                        >
+                          <Text style={styles.modalSecondaryText}>Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                          disabled={editLoading || !editDraft.trim()}
+                          onPress={saveEditedMessage}
+                          style={styles.modalPrimaryButton}
+                        >
+                          {editLoading ? (
+                            <ActivityIndicator color="#10112A" size="small" />
+                          ) : (
+                            <Text style={styles.modalPrimaryText}>Save</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                </Modal>
+
                 <ConfirmModal
                   visible={clearConfirmVisible}
                   title="Clear chat?"
@@ -543,7 +765,38 @@ export function AriaBotScreen({
                   onRequestClose={closeClearConfirm}
                 />
 
+                {selectedAttachments.length ? (
+                  <View style={styles.selectedAttachmentList}>
+                    {selectedAttachments.map((attachment, index) => (
+                      <View key={`${attachment.name}-${index}`} style={styles.selectedAttachmentChip}>
+                        <Text numberOfLines={1} style={styles.selectedAttachmentText}>
+                          {attachment.name}
+                        </Text>
+                        <Pressable
+                          onPress={() =>
+                            setSelectedAttachments((current) => current.filter((_, i) => i !== index))
+                          }
+                        >
+                          <MaterialIcons name="close" size={14} color={colors.textSoft} />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
                 <View style={styles.composerBox}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Attach files"
+                    disabled={loading || selectedAttachments.length >= 5}
+                    onPress={pickAttachments}
+                    style={[
+                      styles.attachButton,
+                      (loading || selectedAttachments.length >= 5) && styles.disabledButton,
+                    ]}
+                  >
+                    <MaterialIcons name="attach-file" size={20} color={colors.offWhite} />
+                  </Pressable>
                   <TextInput
                     accessibilityLabel={`Message ${agentName}`}
                     multiline
@@ -555,7 +808,7 @@ export function AriaBotScreen({
                   />
                   <Pressable
                     accessibilityRole="button"
-                    disabled={loading || !draft.trim()}
+                    disabled={loading || (!draft.trim() && selectedAttachments.length === 0)}
                     onPress={sendMessage}
                     style={[styles.sendButton, (loading || !draft.trim()) && styles.disabledButton]}
                   >
@@ -651,13 +904,23 @@ function RecentChatSidebar({
 
 function normalizeAriaHistory(messages: AriaHistoryMessage[]): ChatMessage[] {
   return messages
-    .filter((message) => message.content)
-    .map((message, index) => ({
-      id: `${message.sender}-${message.created_at ?? index}`,
-      role: message.sender === 'user' ? 'user' : 'aria',
-      text: message.content,
-      createdAt: message.created_at,
-    }));
+    .filter((message) => message.content || message.attachments?.length)
+    .map((message, index) => {
+      const meta = message.meta ?? {};
+      return {
+        id: String(message.id ?? `${message.sender}-${message.created_at ?? index}`),
+        serverId: message.id,
+        role: message.sender === 'user' ? 'user' : 'aria',
+        text: message.content,
+        createdAt: message.created_at,
+        editedAt: message.edited_at,
+        attachments: message.attachments ?? [],
+        pending: meta.pending === true,
+        queryId:
+          typeof meta.query_id === 'string' || typeof meta.query_id === 'number' ? meta.query_id : null,
+        confidence: typeof meta.confidence === 'number' ? meta.confidence : null,
+      };
+    });
 }
 
 function FormattedMessageText({ text, formatBold }: { text: string; formatBold: boolean }) {
@@ -1086,10 +1349,10 @@ const styles = StyleSheet.create({
   boldText: {
     fontFamily: fonts.bodyMedium,
   },
-  botResponse:{
-    display:'flex',
-    flexDirection:'row',
-    justifyContent:'space-between',
+  botResponse: {
+    display: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   messageDate: {
     color: colors.textSoft,
@@ -1268,23 +1531,88 @@ const styles = StyleSheet.create({
   copyButton: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.045)',
-    borderColor: 'rgba(255,255,255,0.11)',
-    borderRadius: 999,
-    borderWidth: 1,
     flexDirection: 'row',
     gap: 5,
     marginTop: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  copyButtonText: {
-    color: colors.textSoft,
-    fontFamily: fonts.bodyMedium,
-    fontSize: 11,
-    lineHeight: 15,
   },
   copyButtonTextActive: {
     color: colors.coral,
+  },
+  attachButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  attachmentList: {
+    gap: 8,
+    marginTop: 6,
+  },
+  attachmentChip: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  attachmentText: {
+    color: colors.offWhite,
+    flex: 1,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+  },
+  selectedAttachmentList: {
+    gap: 8,
+    marginBottom: 10,
+  },
+  selectedAttachmentChip: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(91,141,239,0.14)',
+    borderColor: 'rgba(91,141,239,0.30)',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  selectedAttachmentText: {
+    color: colors.offWhite,
+    flex: 1,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+  },
+  editMessageInput: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  imageAttachmentCard: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  imageAttachment: {
+    backgroundColor: '#202247',
+    height: 190,
+    width: '100%',
+  },
+  imageAttachmentName: {
+    color: colors.textSoft,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
 });

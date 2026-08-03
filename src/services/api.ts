@@ -137,11 +137,36 @@ export interface ProfileImageResponse {
   message?: string;
 }
 
+export interface AriaAttachment {
+  id: number | string;
+  filename: string;
+  content_type?: string;
+  size_bytes?: number;
+  url?: string;
+}
+
+export interface ChatAttachmentFile {
+  uri?: string;
+  name: string;
+  type?: string;
+  file?: Blob;
+  size?: number;
+}
+
 export interface AriaChatResponse {
   agent?: string;
   student_id?: string;
   reply?: string;
   message?: string;
+  message_id?: number | string;
+  pending?: boolean;
+  query_id?: number | string | null;
+  confidence?: number | null;
+  attachments?: AriaAttachment[];
+}
+
+export interface AriaEditResponse extends AriaChatResponse {
+  edited_at?: string | null;
 }
 
 export interface AgentNameResponse {
@@ -191,10 +216,13 @@ export interface AriaConversationMessage {
 }
 
 export interface AriaHistoryMessage {
+  id?: number | string;
   sender: 'user' | 'assistant' | string;
   content: string;
   created_at?: string;
+  edited_at?: string | null;
   meta?: Record<string, unknown>;
+  attachments?: AriaAttachment[];
 }
 
 export interface AriaHistoryResponse {
@@ -419,6 +447,21 @@ async function requestBlobUrlWithSession(
   }
 
   return retryResponse.blob();
+}
+
+function appendChatAttachment(formData: FormData, attachment: ChatAttachmentFile) {
+  if (attachment.file) {
+    formData.append('attachments', attachment.file, attachment.name);
+    return;
+  }
+
+  if (attachment.uri) {
+    formData.append('attachments', {
+      uri: attachment.uri,
+      name: attachment.name,
+      type: attachment.type || 'application/octet-stream',
+    } as unknown as Blob);
+  }
 }
 
 function authHeaders(accessToken: string, contentType = 'application/json') {
@@ -837,15 +880,35 @@ export function downloadResumeFile(session: AuthSession, resumeId: ResumeRecord[
   );
 }
 
-export function chatWithAria(session: AuthSession, message: string) {
+export function chatWithAria(
+  session: AuthSession,
+  message: string,
+  attachments: ChatAttachmentFile[] = [],
+) {
   return requestWithSession<AriaChatResponse>(
     session,
     '/chat/agent/',
-    (accessToken) => ({
-      method: 'POST',
-      headers: authHeaders(accessToken),
-      body: JSON.stringify({ message }),
-    }),
+    (accessToken) => {
+      if (attachments.length === 0) {
+        return {
+          method: 'POST',
+          headers: authHeaders(accessToken),
+          body: JSON.stringify({ message }),
+        };
+      }
+
+      const formData = new FormData();
+      if (message.trim()) {
+        formData.append('message', message.trim());
+      }
+      attachments.forEach((attachment) => appendChatAttachment(formData, attachment));
+
+      return {
+        method: 'POST',
+        headers: authHeaders(accessToken, ''),
+        body: formData,
+      };
+    },
     'Unable to chat with your agent',
   );
 }
@@ -859,6 +922,19 @@ export function getAriaHistory(session: AuthSession) {
       headers: authHeaders(accessToken),
     }),
     'Unable to load agent chat history',
+  );
+}
+
+export function editAriaMessage(session: AuthSession, messageId: number | string, message: string){
+   return requestWithSession<AriaEditResponse>(
+    session,
+    `/chat/agent/${encodeURIComponent(String(messageId))}/edit/`,
+    (accessToken) => ({
+      method: 'PATCH',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ message }),
+    }),
+    'Unable to edit message',
   );
 }
 
