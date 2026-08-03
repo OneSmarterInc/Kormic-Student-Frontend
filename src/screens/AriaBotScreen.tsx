@@ -24,6 +24,7 @@ import {
 import { colors, fonts } from '../theme/tokens';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 
 type ChatMessage = {
   id: string;
@@ -94,6 +95,7 @@ export function AriaBotScreen({
   const shouldScrollMessagesToEndRef = useRef(true);
   const historyThreads = useMemo(() => buildAriaThreads(historyMessages), [historyMessages]);
   const groupedThreads = useMemo(() => groupThreadsByDate(historyThreads), [historyThreads]);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | undefined>();
 
   const scrollMessagesToEnd = (animated = true) => {
     requestAnimationFrame(() => {
@@ -133,34 +135,34 @@ export function AriaBotScreen({
     }
   };
 
- const loadHistory = async (nextAgentName = agentName, syncActiveChat = false) => {
-  if (!session) return;
+  const loadHistory = async (nextAgentName = agentName, syncActiveChat = false) => {
+    if (!session) return;
 
-  try {
-    setHistoryLoading(true);
-    setError('');
+    try {
+      setHistoryLoading(true);
+      setError('');
 
-    const history = await getAriaHistory(session);
-    const historyMessages = normalizeAriaHistory(history.messages ?? []);
+      const history = await getAriaHistory(session);
+      const historyMessages = normalizeAriaHistory(history.messages ?? []);
 
-    setHistoryMessages(historyMessages);
-    cacheAriaMessages(session, historyMessages);
-    setSelectedThreadId(undefined);
+      setHistoryMessages(historyMessages);
+      cacheAriaMessages(session, historyMessages);
+      setSelectedThreadId(undefined);
 
-    if (syncActiveChat) {
-      setMessages(historyMessages.length > 0 ? historyMessages : [getWelcomeMessage(nextAgentName)]);
+      if (syncActiveChat) {
+        setMessages(historyMessages.length > 0 ? historyMessages : [getWelcomeMessage(nextAgentName)]);
+      }
+    } catch (historyError) {
+      setError(historyError instanceof Error ? historyError.message : 'Unable to load agent chat history');
+    } finally {
+      setHistoryLoading(false);
     }
-  } catch (historyError) {
-    setError(historyError instanceof Error ? historyError.message : 'Unable to load agent chat history');
-  } finally {
-    setHistoryLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     const loadAgent = async () => {
       const nextAgentName = await loadAgentName();
-      await  loadHistory(nextAgentName, true);
+      await loadHistory(nextAgentName, true);
     };
 
     loadAgent();
@@ -265,6 +267,19 @@ export function AriaBotScreen({
       setError(chatError instanceof Error ? chatError.message : `Unable to chat with ${agentName}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const copyResponse = async (message: ChatMessage) => {
+    try {
+      await Clipboard.setStringAsync(message.text);
+      setCopiedMessageId(message.id);
+
+      setTimeout(() => {
+        setCopiedMessageId((current) => (current === message.id ? undefined : current));
+      }, 1600);
+    } catch {
+      setError('Unable to copy response.');
     }
   };
 
@@ -398,9 +413,34 @@ export function AriaBotScreen({
                     >
                       <Text style={styles.bubbleLabel}>{message.role === 'user' ? 'You' : agentName}</Text>
                       <FormattedMessageText text={message.text} formatBold={message.role === 'aria'} />
-                      {message.createdAt ? (
-                        <Text style={styles.messageDate}>{formatChatDate(message.createdAt)}</Text>
-                      ) : null}
+                      <View style={styles.botResponse}>
+                        {message.createdAt ? (
+                          <Text style={styles.messageDate}>{formatChatDate(message.createdAt)}</Text>
+                        ) : null}
+
+                        {message.role === 'aria' && message.id !== 'welcome' ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Copy response"
+                            onPress={() => copyResponse(message)}
+                            style={styles.copyButton}
+                          >
+                            <MaterialIcons
+                              name={copiedMessageId === message.id ? 'check' : 'content-copy'}
+                              size={14}
+                              color={copiedMessageId === message.id ? colors.coral : colors.textSoft}
+                            />
+                            <Text
+                              style={[
+                                styles.copyButtonText,
+                                copiedMessageId === message.id && styles.copyButtonTextActive,
+                              ]}
+                            >
+                              {copiedMessageId === message.id ? 'Copied' : 'Copy'}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
                     </View>
                   </View>
                 ))}
@@ -1046,11 +1086,17 @@ const styles = StyleSheet.create({
   boldText: {
     fontFamily: fonts.bodyMedium,
   },
+  botResponse:{
+    display:'flex',
+    flexDirection:'row',
+    justifyContent:'space-between',
+  },
   messageDate: {
     color: colors.textSoft,
     fontFamily: fonts.body,
     fontSize: 11,
     lineHeight: 16,
+    marginTop: 10,
   },
   loadingText: {
     color: colors.textSoft,
@@ -1218,5 +1264,27 @@ const styles = StyleSheet.create({
     color: '#10112A',
     fontFamily: fonts.bodyMedium,
     fontSize: 13,
+  },
+  copyButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderColor: 'rgba(255,255,255,0.11)',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 5,
+    marginTop: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  copyButtonText: {
+    color: colors.textSoft,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  copyButtonTextActive: {
+    color: colors.coral,
   },
 });

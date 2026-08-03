@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, Platform, Modal } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  Platform,
+  Modal,
+  ScrollView,
+} from 'react-native';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionLabel } from '../components/SectionLabel';
@@ -1621,7 +1631,7 @@ function ProfileMenu({
 }) {
   const items: Array<{ key: ProfileSection; label: string }> = [
     { key: 'aria', label: `Chat with ${agentName}` },
-    { key: 'overview', label: 'Overview' },
+    { key: 'overview', label: 'Profile Overview' },
     { key: 'edit', label: 'Edit Profile' },
     { key: 'resumes', label: 'Resume update/view' },
     { key: 'github', label: 'GitHub' },
@@ -2458,6 +2468,13 @@ function LinkedinImageCard({
   accessToken?: string;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setZoom(1);
+  };
+
   const imageSource = uri
     ? {
         uri,
@@ -2484,19 +2501,52 @@ function LinkedinImageCard({
       </Text>
       {caption ? <Text style={styles.metaText}>{caption}</Text> : null}
 
-      <Modal
-        transparent
-        animationType="fade"
-        visible={previewOpen}
-        onRequestClose={() => setPreviewOpen(false)}
-      >
+      <Modal transparent animationType="fade" visible={previewOpen} onRequestClose={closePreview}>
         <View style={styles.linkedinPreviewOverlay}>
-          <Pressable onPress={() => setPreviewOpen(false)} style={styles.linkedinPreviewClose}>
+          <Pressable onPress={closePreview} style={styles.linkedinPreviewClose}>
             <Text style={styles.linkedinPreviewCloseText}>x</Text>
           </Pressable>
 
+          <View style={styles.linkedinZoomActions}>
+            <Pressable
+              onPress={() => setZoom((value) => Math.max(1, value - 0.5))}
+              style={styles.linkedinZoomButton}
+            >
+              <Text style={styles.linkedinZoomText}>-</Text>
+            </Pressable>
+            <Text style={styles.linkedinZoomValue}>{Math.round(zoom * 100)}%</Text>
+            <Pressable
+              onPress={() => setZoom((value) => Math.min(4, value + 0.5))}
+              style={styles.linkedinZoomButton}
+            >
+              <Text style={styles.linkedinZoomText}>+</Text>
+            </Pressable>
+          </View>
+
           {imageSource ? (
-            <Image source={imageSource} style={styles.linkedinPreviewImage} resizeMode="contain" />
+            <ScrollView
+              style={styles.linkedinZoomScroll}
+              contentContainerStyle={styles.linkedinZoomVerticalContent}
+              showsVerticalScrollIndicator
+            >
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator
+                contentContainerStyle={styles.linkedinZoomHorizontalContent}
+              >
+                <Image
+                  source={imageSource}
+                  style={[
+                    styles.linkedinPreviewImage,
+                    {
+                      width: 320 * zoom,
+                      height: 480 * zoom,
+                    },
+                  ]}
+                  resizeMode="contain"
+                />
+              </ScrollView>
+            </ScrollView>
           ) : null}
         </View>
       </Modal>
@@ -3720,10 +3770,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 18,
   },
-  linkedinPreviewImage: {
-    height: '88%',
-    width: '100%',
-  },
   linkedinPreviewClose: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.08)',
@@ -3734,7 +3780,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'absolute',
     right: 18,
-    top: 18,
+    top: 38,
     width: 44,
     zIndex: 2,
   },
@@ -3743,6 +3789,53 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyMedium,
     fontSize: 22,
     lineHeight: 24,
+  },
+  linkedinZoomScroll: {
+    flex: 1,
+    width: '100%',
+  },
+  linkedinPreviewImage: {
+    width: 320,
+    height: 480,
+  },
+
+  linkedinZoomVerticalContent: {
+    minHeight: '100%',
+  },
+
+  linkedinZoomHorizontalContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '100%',
+    padding: 16,
+  },
+  linkedinZoomActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    position: 'absolute',
+    bottom: 54,
+    zIndex: 3,
+  },
+  linkedinZoomButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  linkedinZoomText: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 22,
+  },
+  linkedinZoomValue: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
   },
   resumeUploadButton: {
     alignItems: 'center',

@@ -264,7 +264,7 @@ export async function pollNotifications(session?: AuthSession, since?: string) {
     return { nextSince: since, hasAgentNotification: false };
   }
 
-  const params = new URLSearchParams({ limit: '200' });
+  const params = new URLSearchParams({ limit: '20' });
   if (since) params.set('since', since);
 
   const response = await fetch(`${API_BASE_URL}/notifications/poll/?${params.toString()}`, {
@@ -275,12 +275,6 @@ export async function pollNotifications(session?: AuthSession, since?: string) {
   });
 
   const responseText = await response.text().catch(() => '');
-
-  console.log('[notifications] poll response', {
-    status: response.status,
-    ok: response.ok,
-    body: responseText,
-  });
 
   if (!response.ok) {
     throw new Error(`Notification poll failed with status ${response.status}: ${responseText}`);
