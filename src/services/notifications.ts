@@ -260,7 +260,7 @@ function isAgentNotificationType(type: string | undefined) {
 }
 
 export async function pollNotifications(session?: AuthSession, since?: string) {
-  if (!session?.access) {
+  if (!session?.access || !session.user?.totp_enrolled) {
     return { nextSince: since, hasAgentNotification: false };
   }
 

@@ -4,7 +4,7 @@ import { parseGraduationYear } from '../utils/validation';
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
-const DEFAULT_API_BASE_URL = 'https://kormic.ositicketing.com/api';
+const DEFAULT_API_BASE_URL = 'http://ec2-54-211-231-35.compute-1.amazonaws.com:8030/api';
 
 export const API_BASE_URL =
   typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL : DEFAULT_API_BASE_URL;

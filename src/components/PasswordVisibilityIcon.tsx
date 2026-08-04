@@ -7,7 +7,7 @@ export function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
   return (
     <View style={styles.icon} pointerEvents="none">
       <MaterialIcons
-        name={visible ? 'visibility-off' : 'visibility'}
+        name={visible ? 'visibility' : 'visibility-off'}
         size={22}
         color={colors.textSoft}
       />

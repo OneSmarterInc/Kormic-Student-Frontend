@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { colors, fonts } from '../theme/tokens';
 
-export function SectionLabel({ children }: { children: string }) {
+export function SectionLabel({ children }: { children: React.ReactNode }) {
   return <Text style={styles.label}>{children}</Text>;
 }
 

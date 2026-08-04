@@ -25,15 +25,139 @@ interface BasicInfoScreenProps {
 type RegisterErrors = BasicInfoErrors & Partial<Record<'password' | 'api', string>>;
 
 const collegeOptions = [
-  { label: 'IIT Bombay', value: 'Indian Institute of Technology Bombay' },
-  { label: 'VJTI Mumbai', value: 'Veermata Jijabai Technological Institute, Mumbai' },
-  { label: 'COEP Pune', value: 'COEP Technological University, Pune' },
-  { label: 'SPIT Mumbai', value: 'Sardar Patel Institute of Technology, Mumbai' },
-  { label: 'PICT Pune', value: 'Pune Institute of Computer Technology, Pune' },
-  { label: 'VNIT Nagpur', value: 'Visvesvaraya National Institute of Technology, Nagpur' },
-  { label: 'VIT Pune', value: 'Vishwakarma Institute of Technology, Pune' },
-  { label: 'PRPCEM Amravati', value: 'P. R. Pote Patil College of Engineering and Management, Amravati' },
-  { label: 'SSGMC Shegaon', value: 'Shri Shivaji Science and Management College (SSGMC)' },
+  { label: 'Indian Institute of Technology Bombay', value: 'Indian Institute of Technology Bombay' },
+  {
+    label: 'Veermata Jijabai Technological Institute, Mumbai',
+    value: 'Veermata Jijabai Technological Institute, Mumbai',
+  },
+  { label: 'COEP Technological University, Pune', value: 'COEP Technological University, Pune' },
+  {
+    label: 'Sardar Patel Institute of Technology, Mumbai',
+    value: 'Sardar Patel Institute of Technology, Mumbai',
+  },
+  {
+    label: 'Pune Institute of Computer Technology, Pune',
+    value: 'Pune Institute of Computer Technology, Pune',
+  },
+  {
+    label: 'Visvesvaraya National Institute of Technology, Nagpur',
+    value: 'Visvesvaraya National Institute of Technology, Nagpur',
+  },
+  { label: 'Vishwakarma Institute of Technology, Pune', value: 'Vishwakarma Institute of Technology, Pune' },
+  {
+    label: 'Pimpri Chinchwad College of Engineering, Pune',
+    value: 'Pimpri Chinchwad College of Engineering, Pune',
+  },
+  { label: 'MIT World Peace University, Pune', value: 'MIT World Peace University, Pune' },
+  {
+    label: 'Dr. D. Y. Patil Institute of Technology, Akurdi',
+    value: 'Dr. D. Y. Patil Institute of Technology, Akurdi',
+  },
+  {
+    label: 'Dr. D. Y. Patil Institute of Engineering, Management and Research, Pimpri',
+    value: 'Dr. D. Y. Patil Institute of Engineering, Management and Research, Pimpri',
+  },
+  {
+    label: 'Sinhgad College of Engineering, Vadgaon, Pune',
+    value: 'Sinhgad College of Engineering, Vadgaon, Pune',
+  },
+  {
+    label: 'Sinhgad Institute of Technology and Science, Narhe',
+    value: 'Sinhgad Institute of Technology and Science, Narhe',
+  },
+  { label: 'AISSMS College of Engineering, Pune', value: 'AISSMS College of Engineering, Pune' },
+  {
+    label: 'Marathwada Mitra Mandal College of Engineering, Pune',
+    value: 'Marathwada Mitra Mandal College of Engineering, Pune',
+  },
+  {
+    label: 'JSPM Rajarshi Shahu College of Engineering, Pune',
+    value: 'JSPM Rajarshi Shahu College of Engineering, Pune',
+  },
+  {
+    label: 'Pune Vidyarthi Griha College of Engineering and Technology, Pune',
+    value: 'Pune Vidyarthi Griha College of Engineering and Technology, Pune',
+  },
+  {
+    label: 'Cummins College of Engineering for Women, Pune',
+    value: 'Cummins College of Engineering for Women, Pune',
+  },
+  {
+    label: 'Bharati Vidyapeeth College of Engineering, Pune',
+    value: 'Bharati Vidyapeeth College of Engineering, Pune',
+  },
+  {
+    label: 'Shri Ramdeobaba College of Engineering and Management, Nagpur',
+    value: 'Shri Ramdeobaba College of Engineering and Management, Nagpur',
+  },
+  {
+    label: 'Government College of Engineering, Amravati',
+    value: 'Government College of Engineering, Amravati',
+  },
+  { label: 'Walchand College of Engineering, Sangli', value: 'Walchand College of Engineering, Sangli' },
+  { label: 'KIT College of Engineering, Kolhapur', value: 'KIT College of Engineering, Kolhapur' },
+  {
+    label: 'D. Y. Patil College of Engineering and Technology, Kolhapur',
+    value: 'D. Y. Patil College of Engineering and Technology, Kolhapur',
+  },
+  {
+    label: 'Shri Guru Gobind Singhji Institute of Engineering and Technology, Nanded',
+    value: 'Shri Guru Gobind Singhji Institute of Engineering and Technology, Nanded',
+  },
+  {
+    label: 'Government College of Engineering, Chhatrapati Sambhajinagar',
+    value: 'Government College of Engineering, Chhatrapati Sambhajinagar',
+  },
+  {
+    label: 'K. K. Wagh Institute of Engineering Education and Research, Nashik',
+    value: 'K. K. Wagh Institute of Engineering Education and Research, Nashik',
+  },
+  { label: 'MET Institute of Engineering, Nashik', value: 'MET Institute of Engineering, Nashik' },
+  {
+    label: 'SSBT College of Engineering and Technology, Jalgaon',
+    value: 'SSBT College of Engineering and Technology, Jalgaon',
+  },
+  {
+    label: 'P. R. Pote Patil College of Engineering and Management, Amravati',
+    value: 'P. R. Pote Patil College of Engineering and Management, Amravati',
+  },
+  {
+    label: 'Sant Gajanan Maharaj College of Engineering and Management, Shegaon',
+    value: 'Sant Gajanan Maharaj College of Engineering and Management, Shegaon',
+  },
+
+  // Popular institutes outside Maharashtra
+  { label: 'Indian Institute of Technology Delhi', value: 'Indian Institute of Technology Delhi' },
+  { label: 'Indian Institute of Technology Madras', value: 'Indian Institute of Technology Madras' },
+  { label: 'Indian Institute of Technology Kanpur', value: 'Indian Institute of Technology Kanpur' },
+  { label: 'Indian Institute of Technology Kharagpur', value: 'Indian Institute of Technology Kharagpur' },
+  { label: 'Indian Institute of Technology Roorkee', value: 'Indian Institute of Technology Roorkee' },
+  { label: 'Indian Institute of Technology Guwahati', value: 'Indian Institute of Technology Guwahati' },
+  {
+    label: 'Birla Institute of Technology and Science, Pilani',
+    value: 'Birla Institute of Technology and Science, Pilani',
+  },
+  {
+    label: 'National Institute of Technology Tiruchirappalli',
+    value: 'National Institute of Technology Tiruchirappalli',
+  },
+  {
+    label: 'National Institute of Technology Karnataka, Surathkal',
+    value: 'National Institute of Technology Karnataka, Surathkal',
+  },
+  { label: 'National Institute of Technology Warangal', value: 'National Institute of Technology Warangal' },
+  {
+    label: 'International Institute of Information Technology, Hyderabad',
+    value: 'International Institute of Information Technology, Hyderabad',
+  },
+  {
+    label: 'International Institute of Information Technology, Bangalore',
+    value: 'International Institute of Information Technology, Bangalore',
+  },
+  { label: 'Delhi Technological University', value: 'Delhi Technological University' },
+  { label: 'Netaji Subhas University of Technology', value: 'Netaji Subhas University of Technology' },
+  { label: 'Punjab Engineering College, Chandigarh', value: 'Punjab Engineering College, Chandigarh' },
+
   { label: 'Other college/university', value: 'Other college/university' },
 ];
 
@@ -42,11 +166,22 @@ const fieldOptions = [
   { label: 'Computer Science', value: 'Computer Science' },
   { label: 'Information Technology', value: 'Information Technology' },
   { label: 'Artificial Intelligence', value: 'Artificial Intelligence' },
+  {
+    label: 'Artificial Intelligence and Machine Learning',
+    value: 'Artificial Intelligence and Machine Learning',
+  },
   { label: 'Data Science', value: 'Data Science' },
+  { label: 'Data Analytics', value: 'Data Analytics' },
+  { label: 'Cyber Security', value: 'Cyber Security' },
+  { label: 'Internet of Things (IoT)', value: 'Internet of Things (IoT)' },
   { label: 'Electronics and Telecommunication', value: 'Electronics and Telecommunication' },
+  { label: 'Electronics Engineering', value: 'Electronics Engineering' },
+  { label: 'Electrical Engineering', value: 'Electrical Engineering' },
   { label: 'Mechanical Engineering', value: 'Mechanical Engineering' },
   { label: 'Civil Engineering', value: 'Civil Engineering' },
-  { label: 'Electrical Engineering', value: 'Electrical Engineering' },
+  { label: 'Chemical Engineering', value: 'Chemical Engineering' },
+  { label: 'Automobile Engineering', value: 'Automobile Engineering' },
+  { label: 'Other', value: 'Other' },
 ];
 
 const degreeLevelOptions = [
@@ -54,6 +189,7 @@ const degreeLevelOptions = [
   { label: "Master's", value: "Master's" },
   { label: 'Diploma', value: 'Diploma' },
   { label: 'PhD', value: 'PhD' },
+  { label: 'Other', value: 'Other' },
 ];
 
 const yearInCollegeOptions = [
@@ -71,11 +207,48 @@ const countryOptions = [
   { label: 'Australia', value: 'Australia' },
   { label: 'Germany', value: 'Germany' },
   { label: 'Ireland', value: 'Ireland' },
+
+  { label: 'United Arab Emirates', value: 'United Arab Emirates' },
+  { label: 'Singapore', value: 'Singapore' },
+  { label: 'New Zealand', value: 'New Zealand' },
+  { label: 'France', value: 'France' },
+  { label: 'Italy', value: 'Italy' },
+  { label: 'Spain', value: 'Spain' },
+  { label: 'Netherlands', value: 'Netherlands' },
+  { label: 'Switzerland', value: 'Switzerland' },
+  { label: 'Sweden', value: 'Sweden' },
+  { label: 'Norway', value: 'Norway' },
+  { label: 'Denmark', value: 'Denmark' },
+  { label: 'Finland', value: 'Finland' },
+
+  { label: 'Japan', value: 'Japan' },
+  { label: 'South Korea', value: 'South Korea' },
+  { label: 'China', value: 'China' },
+  { label: 'Hong Kong', value: 'Hong Kong' },
+  { label: 'Malaysia', value: 'Malaysia' },
+  { label: 'Thailand', value: 'Thailand' },
+  { label: 'Indonesia', value: 'Indonesia' },
+  { label: 'Vietnam', value: 'Vietnam' },
+  { label: 'Philippines', value: 'Philippines' },
+
+  { label: 'Brazil', value: 'Brazil' },
+  { label: 'Mexico', value: 'Mexico' },
+  { label: 'Argentina', value: 'Argentina' },
+  { label: 'South Africa', value: 'South Africa' },
+  { label: 'Egypt', value: 'Egypt' },
+  { label: 'Nigeria', value: 'Nigeria' },
+
+  { label: 'Bangladesh', value: 'Bangladesh' },
+  { label: 'Sri Lanka', value: 'Sri Lanka' },
+  { label: 'Nepal', value: 'Nepal' },
+  { label: 'Bhutan', value: 'Bhutan' },
+
+  { label: 'Other', value: 'Other' },
 ];
 
 function getGraduationYearOptions() {
   const currentYear = new Date().getFullYear();
-  return Array.from({ length: 25 }, (_, index) => {
+  return Array.from({ length: 50 }, (_, index) => {
     const year = currentYear + index;
     return { label: String(year), value: String(year) };
   });
@@ -196,12 +369,14 @@ export function BasicInfoScreen({
         <SectionLabel>{isCreatingMissingProfile ? 'Profile details' : 'Register'}</SectionLabel>
         <TextField
           label="Full name"
+          required
           value={state.basicInfo.fullName}
           onChangeText={update('fullName')}
           error={shownErrors.fullName}
         />
         <TextField
           label="Email"
+          required
           value={state.basicInfo.email}
           onChangeText={update('email')}
           keyboardType="email-address"
@@ -211,6 +386,7 @@ export function BasicInfoScreen({
         {!isCreatingMissingProfile ? (
           <TextField
             label="Password"
+            required
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!passwordVisible}
@@ -229,6 +405,7 @@ export function BasicInfoScreen({
         ) : null}
         <TextField
           label="Phone number"
+          required
           value={state.basicInfo.phone}
           onChangeText={update('phone')}
           keyboardType="phone-pad"
@@ -236,7 +413,9 @@ export function BasicInfoScreen({
         />
 
         <View style={styles.dateField}>
-          <Text style={styles.fieldLabel}>Date of birth</Text>
+          <Text style={styles.fieldLabel}>
+            Date of birth <Text style={styles.requiredMark}>*</Text>
+          </Text>
 
           {Platform.OS === 'web' ? (
             React.createElement(
@@ -304,6 +483,7 @@ export function BasicInfoScreen({
         <SectionLabel>Your studies</SectionLabel>
         <DropdownField
           label="College/university"
+          required
           data={collegeOptions}
           value={state.basicInfo.college}
           onChange={update('college')}
@@ -311,6 +491,7 @@ export function BasicInfoScreen({
         />
         <DropdownField
           label="Field or branch of study"
+          required
           data={fieldOptions}
           value={state.basicInfo.fieldOfStudy}
           onChange={update('fieldOfStudy')}
@@ -318,6 +499,7 @@ export function BasicInfoScreen({
         />
         <DropdownField
           label="Degree level"
+          required
           data={degreeLevelOptions}
           value={state.basicInfo.degreeLevel}
           onChange={update('degreeLevel')}
@@ -325,6 +507,7 @@ export function BasicInfoScreen({
         />
         <DropdownField
           label="Year in college"
+          required
           data={yearInCollegeOptions}
           value={state.basicInfo.yearInCollege}
           onChange={update('yearInCollege')}
@@ -332,6 +515,7 @@ export function BasicInfoScreen({
         />
         <DropdownField
           label="Expected graduation year"
+          required
           data={graduationYearOptions}
           value={state.basicInfo.expectedGraduation}
           onChange={update('expectedGraduation')}
@@ -341,25 +525,30 @@ export function BasicInfoScreen({
         <SectionLabel>Where you are</SectionLabel>
         <TextField
           label="City"
+          required
           value={state.basicInfo.city}
           onChangeText={update('city')}
           error={shownErrors.city}
         />
         <TextField
           label="State/region"
+          required
           value={state.basicInfo.region}
           onChangeText={update('region')}
           error={shownErrors.region}
         />
         <DropdownField
           label="Country"
+          required
           data={countryOptions}
           value={state.basicInfo.country}
           onChange={update('country')}
           error={shownErrors.country}
         />
 
-        <SectionLabel>What are you interested in?</SectionLabel>
+        <SectionLabel>
+          What are you interested in? <Text style={styles.requiredMark}>*</Text>
+        </SectionLabel>
         <ChoiceChips
           options={interests}
           selected={state.basicInfo.interests}
@@ -373,9 +562,7 @@ export function BasicInfoScreen({
           onChangeText={update('targetDegreeOrField')}
           placeholder="MS in Computer Science"
         />
-        {shownErrors.api ? (
-          <Text style={styles.errorText}>{shownErrors.api}</Text>
-        ) :null}
+        {shownErrors.api ? <Text style={styles.errorText}>{shownErrors.api}</Text> : null}
       </View>
     </ScreenShell>
   );
@@ -548,5 +735,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 13,
     lineHeight: 18,
+  },
+  requiredMark: {
+    color: colors.coral,
   },
 });

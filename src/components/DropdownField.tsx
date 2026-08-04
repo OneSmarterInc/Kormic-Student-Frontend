@@ -14,18 +14,16 @@ interface Props {
   data: Item[];
   onChange: (value: string) => void;
   error?: string;
+  required?: boolean;
 }
 
-export function DropdownField({
-  label,
-  value,
-  data,
-  onChange,
-  error,
-}: Props) {
+export function DropdownField({ label, value, data, onChange, error, required = false }: Props) {
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {required ? <Text style={styles.required}> *</Text> : null}
+      </Text>
 
       <Dropdown
         style={[styles.dropdown, error ? styles.errorBorder : undefined]}
@@ -59,6 +57,10 @@ const styles = StyleSheet.create({
     color: '#B9B8CC',
     fontFamily: fonts.bodyMedium,
     fontSize: 13,
+  },
+
+  required: {
+    color: colors.coral,
   },
 
   dropdown: {

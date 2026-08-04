@@ -466,6 +466,7 @@ export function ProfileScreen({
   const [resumeUploadLoading, setResumeUploadLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [sectionError, setSectionError] = useState('');
+  const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({});
   const [linkedinUrl, setLinkedinUrl] = useState(profile.linkedin_url ?? '');
   const [profileDraft, setProfileDraft] = useState({
     name: profile.name ?? '',
@@ -821,11 +822,39 @@ export function ProfileScreen({
     }
   };
 
+  const validateProfileDraft = () => {
+    const errors: Record<string, string> = {};
+
+    if (!profileDraft.name.trim()) errors.name = 'Full name is required.';
+    if (!profileDraft.email.trim()) errors.email = 'Email is required.';
+    if (!profileDraft.country.trim()) errors.country = 'Country is required.';
+    if (!profileDraft.institution.trim()) errors.institution = 'Institution is required.';
+    if (!profileDraft.major.trim()) errors.major = 'Branch is required.';
+    if (!profileDraft.graduation_year.trim()) errors.graduation_year = 'Graduation year is required.';
+
+    if (profileDraft.email.trim() && !/^\S+@\S+\.\S+$/.test(profileDraft.email.trim())) {
+      errors.email = 'Enter a valid email address.';
+    }
+
+    if (profileDraft.graduation_year.trim() && Number.isNaN(Number(profileDraft.graduation_year.trim()))) {
+      errors.graduation_year = 'Graduation year must be a number.';
+    }
+
+    setProfileFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const saveProfileDetails = async () => {
     if (!session) {
       setSectionError('Please sign in again to update your profile.');
       return;
     }
+
+    if(!validateProfileDraft()){
+      setSectionError('Please fill all required profile fields.');
+      return;
+    }
+
     const englishScoreValue = profileDraft.english_score_text.trim();
     try {
       setActionLoading(true);
@@ -1074,6 +1103,7 @@ export function ProfileScreen({
               imageLoading={profileImageLoading}
               loading={actionLoading}
               error={sectionError}
+              fieldErrors={profileFieldErrors}
               onChange={(field, value) => setProfileDraft((current) => ({ ...current, [field]: value }))}
               onReplaceImage={replaceProfileImage}
               onRemoveImage={removeProfileImage}
@@ -1193,7 +1223,7 @@ export function ProfileScreen({
                 <InfoCard>
                   <FieldRow label="Institution" value={profile.institution} />
                   <FieldRow label="Branch" value={profile.major} />
-                  <FieldRow label="Program" value={profile.program} />
+                  {/* <FieldRow label="Program" value={profile.program} /> */}
                   <FieldRow label="Country" value={profile.country} />
                   <FieldRow label="Graduation year" value={formatValue(profile.graduation_year)} />
                 </InfoCard>
@@ -1677,6 +1707,7 @@ function EditProfileForm({
   onReplaceImage,
   onRemoveImage,
   onSave,
+  fieldErrors,
 }: {
   draft: {
     name: string;
@@ -1750,33 +1781,53 @@ function EditProfileForm({
           <Text style={styles.editBlockTitle}>Basic details</Text>
           <Text style={styles.editBlockCaption}>Personal and program information</Text>
         </View>
-        <TextField label="Full name" value={draft.name} onChangeText={(value) => onChange('name', value)} />
+        <TextField
+          label="Full name"
+          required
+          value={draft.name}
+          error={fieldErrors.name}
+          onChangeText={(value) => onChange('name', value)}
+        />
         <TextField
           label="Email"
+          required
           value={draft.email}
+          error={fieldErrors.email}
           onChangeText={(value) => onChange('email', value)}
           keyboardType="email-address"
           autoCapitalize="none"
         />
         <TextField
           label="Country"
+          required
           value={draft.country}
+          error={fieldErrors.country}
           onChangeText={(value) => onChange('country', value)}
         />
         <TextField
           label="Institution"
+          required
           value={draft.institution}
+          error={fieldErrors.institution}
           onChangeText={(value) => onChange('institution', value)}
         />
-        <TextField label="Branch" value={draft.major} onChangeText={(value) => onChange('major', value)} />
         <TextField
+          label="Branch"
+          required
+          value={draft.major}
+          error={fieldErrors.major}
+          onChangeText={(value) => onChange('major', value)}
+        />
+        {/* <TextField
           label="Program"
           value={draft.program}
           onChangeText={(value) => onChange('program', value)}
-        />
+        /> */}
         <TextField
           label="Graduation year"
+          required
           value={draft.graduation_year}
+          error={fieldErrors.graduation_year}
           onChangeText={(value) => onChange('graduation_year', value)}
           keyboardType="number-pad"
         />
@@ -3182,8 +3233,9 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   editFooter: {
-    gap: 10,
+    gap: 24,
     paddingTop: 174,
+    bottom:24,
   },
   loadingState: {
     alignItems: 'center',
@@ -3456,7 +3508,7 @@ const styles = StyleSheet.create({
   },
   resumeTitleWrap: {
     flex: 1,
-    gap: 3,
+    gap: 2,
   },
   fieldRow: {
     gap: 5,
@@ -3483,7 +3535,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.heading,
     fontSize: 17,
     lineHeight: 23,
-    marginBottom: 24,
+    marginBottom: 8,
   },
   cardCaption: {
     color: colors.textSoft,

@@ -6,15 +6,17 @@ interface TextFieldProps extends TextInputProps {
   label: string;
   error?: string;
   optional?: boolean;
+  required?: boolean;
   rightElement?: React.ReactNode;
 }
 
-export function TextField({ label, error, optional, rightElement, ...props }: TextFieldProps) {
+export function TextField({ label, error, optional,required, rightElement, ...props }: TextFieldProps) {
   return (
     <View style={styles.root}>
       <Text style={styles.label}>
         {label}
-        {optional ? <Text style={styles.optional}> - optional</Text> : null}
+        {required ? <Text style={styles.required}> *</Text> : null}
+        {optional ? <Text style={styles.optional}></Text> : null}
       </Text>
       <View style={[styles.inputWrap, error ? styles.errorBorder : undefined]}>
         <TextInput
@@ -40,6 +42,9 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyMedium,
     fontSize: 13,
   },
+  required: {
+  color: colors.coral,
+},
   optional: {
     color: colors.muted,
     fontFamily: fonts.body,

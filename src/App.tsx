@@ -366,34 +366,38 @@ export default function App() {
   }, [loadProfileForSession, navigate]);
 
   useEffect(() => {
-    if (!state.authSession?.access) return;
+  if (!state.authSession?.access || !state.authSession.user?.totp_enrolled) return;
 
-    let cancelled = false;
+  let cancelled = false;
 
-    const runPoll = async () => {
-      try {
-        const result = await pollNotifications(state.authSession, notificationPollSince);
+  const runPoll = async () => {
+    try {
+      const result = await pollNotifications(state.authSession, notificationPollSince);
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        setNotificationPollSince(result.nextSince);
+      setNotificationPollSince(result.nextSince);
 
-        if (result.hasAgentNotification) {
-          setBotNotificationRefreshKey((current) => current + 1);
-        }
-      } catch (error) {
-        console.log('[notifications] poll failed:', error);
+      if (result.hasAgentNotification) {
+        setBotNotificationRefreshKey((current) => current + 1);
       }
-    };
+    } catch (error) {
+      console.log('[notifications] poll failed:', error);
+    }
+  };
 
-    runPoll();
-    const interval = setInterval(runPoll, 15000);
+  runPoll();
+  const interval = setInterval(runPoll, 15000);
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [state.authSession?.access, notificationPollSince]);
+  return () => {
+    cancelled = true;
+    clearInterval(interval);
+  };
+}, [
+  state.authSession?.access,
+  state.authSession?.user?.totp_enrolled,
+  notificationPollSince,
+]);
 
   if (!frauncesLoaded || !interLoaded || restoringSession) {
     return (
