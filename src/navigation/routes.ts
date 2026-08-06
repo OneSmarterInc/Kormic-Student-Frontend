@@ -5,6 +5,9 @@ import { isBasicInfoComplete } from '../utils/validation';
 export const routeTitles: Record<OnboardingRoute, string> = {
   Welcome: 'Welcome',
   Login: 'Login',
+  ForgotPassword: 'Forgot password',
+  ResetOtp: 'Verify reset code',
+  ResetPassword: 'Reset password',
   BasicInfo: 'Basic information',
   SecuritySetup: 'Security setup',
   GitHub: 'GitHub',
@@ -17,6 +20,15 @@ export const routeTitles: Record<OnboardingRoute, string> = {
 };
 
 export function getPreviousRoute(route: OnboardingRoute): OnboardingRoute | undefined {
+  if (route === 'ForgotPassword') {
+    return 'Login';
+  }
+  if (route === 'ResetOtp') {
+    return 'ForgotPassword';
+  }
+  if (route === 'ResetPassword') {
+    return 'ResetOtp';
+  }
   if (route === 'Login') {
     return 'Welcome';
   }
@@ -51,6 +63,12 @@ export function canAdvanceFrom(route: OnboardingRoute, state: OnboardingState): 
       return true;
     case 'Login':
       return Boolean(state.authSession);
+    case 'ForgotPassword':
+      return false;
+    case 'ResetOtp':
+      return false;
+    case 'ResetPassword':
+      return false;
     case 'BasicInfo':
       return isBasicInfoComplete(state.basicInfo);
     case 'SecuritySetup':

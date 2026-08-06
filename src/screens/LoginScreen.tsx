@@ -14,11 +14,12 @@ interface LoginScreenProps {
   dispatch: React.Dispatch<OnboardingAction>;
   onContinue: (session?: AuthSession) => void;
   onSignUp: () => void;
+  onForgotPassword: () => void;
 }
 
 type LoginErrors = Partial<Record<'email' | 'password' | 'api', string>>;
 
-export function LoginScreen({ dispatch, onContinue, onSignUp }: LoginScreenProps) {
+export function LoginScreen({ dispatch, onContinue, onSignUp, onForgotPassword }: LoginScreenProps) {
   const [submitted, setSubmitted] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -160,6 +161,9 @@ export function LoginScreen({ dispatch, onContinue, onSignUp }: LoginScreenProps
               }
               error={shownErrors.password}
             />
+            <Pressable accessibilityRole="button" onPress={onForgotPassword} style={styles.forgotButton}>
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </Pressable>
             {shownErrors.api ? <Text style={styles.errorText}>{shownErrors.api}</Text> : null}
           </View>
         </View>
@@ -206,6 +210,15 @@ const styles = StyleSheet.create({
     minWidth: 44,
     paddingHorizontal: 8,
     paddingVertical: 6,
+  },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+  },
+  forgotText: {
+    color: colors.error,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
   },
   signupText: {
     textAlign: 'center',

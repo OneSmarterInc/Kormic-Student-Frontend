@@ -4,7 +4,7 @@ import { parseGraduationYear } from '../utils/validation';
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
-const DEFAULT_API_BASE_URL = 'http://ec2-54-211-231-35.compute-1.amazonaws.com:8030/api';
+const DEFAULT_API_BASE_URL = 'https://backend.kormic.ai/api';
 
 export const API_BASE_URL =
   typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL : DEFAULT_API_BASE_URL;
@@ -77,6 +77,20 @@ export interface RefreshResponse {
   refresh?: string;
   refresh_token?: string;
 }
+
+export interface ForgotPasswordResponse {
+  detail: string;
+}
+
+export interface VerifyResetOtpResponse {
+  reset_token: string;
+  expires_in: number;
+}
+
+export interface ConfirmResetPasswordResponse {
+  detail: string;
+}
+
 
 export interface ResumeRecord {
   id: number | string;
@@ -515,6 +529,46 @@ export function loginStudent(payload: { email: string; password: string }) {
     'Unable to sign in',
   );
 }
+
+export function requestPasswordResetOtp(email: string) {
+  return requestJson<ForgotPasswordResponse>(
+     '/auth/forgot-password/',
+     {
+      method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ email: email.trim() }),
+     },
+     'Unable to send reset code',
+   );
+ }
+ 
+ export function verifyPasswordResetOtp(payload: { email: string; otp: string }) {
+   return requestJson<VerifyResetOtpResponse>(
+     '/auth/reset-password/verify-otp/',
+     {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ email: payload.email.trim(), otp: payload.otp.trim() }),
+     },
+     'Unable to verify reset code',
+   );
+ }
+ 
+ export function confirmPasswordReset(payload: { resetToken: string; newPassword: string }) {
+   return requestJson<ConfirmResetPasswordResponse>(
+     '/auth/reset-password/confirm/',
+     {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({
+         reset_token: payload.resetToken,
+         new_password: payload.newPassword,
+       }),
+     },
+     'Unable to reset password',
+   );
+ }
+ 
 
 export function enrollTotp(accessToken: string) {
   return requestJson<TotpEnrollResponse>(

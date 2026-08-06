@@ -1,6 +1,9 @@
 export type OnboardingRoute =
   | 'Welcome'
   | 'Login'
+  |'ForgotPassword'
+  | 'ResetOtp'
+  | 'ResetPassword'
   | 'BasicInfo'
   | 'SecuritySetup'
   | 'GitHub'

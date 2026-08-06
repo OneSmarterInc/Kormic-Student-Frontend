@@ -18,6 +18,9 @@ import { GitHubScreen } from './screens/GitHubScreen';
 import { LinkedInScreen } from './screens/LinkedInScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { ProfileScreen, StudentProfile } from './screens/ProfileScreen';
+import { ForgotPasswordScreen } from './screens/ForgotPasswordScreen';
+import { ResetOtpScreen } from './screens/ResetOtpScreen';
+import { ResetPasswordScreen } from './screens/ResetPasswordScreen';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { createStudentProfile, getMe, getStudentProfile, refreshAccessToken } from './services/api';
 import { mockOnboardingServices } from './services/onboardingServices';
@@ -112,7 +115,15 @@ function isTotpEnrollmentError(message: string) {
 }
 
 function isAuthRoute(route: OnboardingRoute) {
-  return route === 'Welcome' || route === 'Login' || route === 'BasicInfo' || route === 'SecuritySetup';
+  return (
+  route === 'Welcome' ||
+  route === 'Login' ||
+  route === 'ForgotPassword' ||
+  route === 'ResetOtp' ||
+  route === 'ResetPassword' ||
+  route === 'BasicInfo' ||
+  route === 'SecuritySetup'
+);
 }
 
 function hidesBotLauncher(route: OnboardingRoute) {
@@ -145,6 +156,8 @@ export default function App() {
   const [profileAriaActive, setProfileAriaActive] = useState(false);
   const services = useMemo(() => mockOnboardingServices, []);
   const [notificationPollSince, setNotificationPollSince] = useState<string | undefined>();
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
 
   const navigate = useCallback((route: OnboardingRoute) => dispatch({ type: 'NAVIGATE', route }), []);
   const back = useCallback(() => dispatch({ type: 'BACK' }), []);
@@ -417,6 +430,43 @@ export default function App() {
             dispatch={dispatch}
             onContinue={(session) => (session ? continueAfterAuth(session) : navigate('SecuritySetup'))}
             onSignUp={() => navigate('Welcome')}
+            onForgotPassword={() => navigate('ForgotPassword')}
+          />
+        );
+      case 'ForgotPassword':
+        return (
+          <ForgotPasswordScreen
+            initialEmail={resetEmail}
+            onCodeSent={(email) => {
+              setResetEmail(email);
+              navigate('ResetOtp');
+            }}
+            onBackToLogin={() => navigate('Login')}
+          />
+        );
+      case 'ResetOtp':
+        return (
+          <ResetOtpScreen
+            email={resetEmail}
+            onVerified={(token) => {
+              setResetToken(token);
+              navigate('ResetPassword');
+            }}
+            onBackToEmail={() => navigate('ForgotPassword')}
+          />
+        );
+      case 'ResetPassword':
+        return (
+          <ResetPasswordScreen
+            resetToken={resetToken}
+            onComplete={() => {
+              setResetToken('');
+              navigate('Login');
+            }}
+            onExpired={() => {
+              setResetToken('');
+              navigate('ForgotPassword');
+            }}
           />
         );
       case 'BasicInfo':
