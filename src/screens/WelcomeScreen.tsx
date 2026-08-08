@@ -8,15 +8,17 @@ import { colors, fonts, type } from '../theme/tokens';
 interface WelcomeScreenProps {
   onStart: () => void;
   onLogin: () => void;
+  onClaim: () => void;
 }
 
-export function WelcomeScreen({ onStart, onLogin }: WelcomeScreenProps) {
+export function WelcomeScreen({ onStart, onLogin, onClaim }: WelcomeScreenProps) {
   return (
     <ScreenShell
       scroll={false}
       footer={
         <View style={styles.footer}>
           <PrimaryButton label="Get started" onPress={onStart} accessibilityLabel="Get started" />
+          <PrimaryButton label="Claim invitation" onPress={onClaim} variant="secondary" accessibilityLabel="Claim invitation" />
           <Pressable accessibilityRole="button" accessibilityLabel="Sign in" onPress={onLogin} hitSlop={8}>
             <Text style={styles.signIn}>Already registered? Sign in</Text>
           </Pressable>
