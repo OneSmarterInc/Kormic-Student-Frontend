@@ -8,6 +8,10 @@ export const routeTitles: Record<OnboardingRoute, string> = {
   ForgotPassword: 'Forgot password',
   ResetOtp: 'Verify reset code',
   ResetPassword: 'Reset password',
+  ClaimLanding: 'Claim invitation',
+  ClaimCode: 'Verify invitation',
+  ClaimReview: 'Review invitation',
+  ClaimPassword: 'Create password',
   BasicInfo: 'Basic information',
   SecuritySetup: 'Security setup',
   GitHub: 'GitHub',
@@ -28,6 +32,18 @@ export function getPreviousRoute(route: OnboardingRoute): OnboardingRoute | unde
   }
   if (route === 'ResetPassword') {
     return 'ResetOtp';
+  }
+  if (route === 'ClaimLanding') {
+    return 'Welcome';
+  }
+  if (route === 'ClaimCode') {
+    return 'ClaimLanding';
+  }
+  if (route === 'ClaimReview') {
+    return 'ClaimCode';
+  }
+  if (route === 'ClaimPassword') {
+    return 'ClaimReview';
   }
   if (route === 'Login') {
     return 'Welcome';
@@ -68,6 +84,14 @@ export function canAdvanceFrom(route: OnboardingRoute, state: OnboardingState): 
     case 'ResetOtp':
       return false;
     case 'ResetPassword':
+      return false;
+    case 'ClaimLanding':
+      return false;
+    case 'ClaimCode':
+      return false;
+    case 'ClaimReview':
+      return false;
+    case 'ClaimPassword':
       return false;
     case 'BasicInfo':
       return isBasicInfoComplete(state.basicInfo);
