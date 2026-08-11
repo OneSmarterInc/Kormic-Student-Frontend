@@ -12,7 +12,39 @@
     },
     "android": {
       "package": "com.kormic.student",
-      "googleServicesFile":"./firebase/google-services.json"
+      "googleServicesFile": "./firebase/google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "http",
+              "host": "localhost",
+              "pathPrefix": "/claim"
+            },
+            {
+              "scheme": "http",
+              "host": "10.0.2.2",
+              "pathPrefix": "/claim"
+            },
+            {
+              "scheme": "https",
+              "host": "backend.kormic.ai",
+              "pathPrefix": "/claim"
+            },
+            {
+              "scheme": "http",
+              "host": "backend.kormic.ai",
+              "pathPrefix": "/claim"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "plugins": [
       "expo-font",

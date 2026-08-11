@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { ActivityIndicator, Image, Linking, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import {
   Fraunces_600SemiBold,
   Fraunces_600SemiBold_Italic,
@@ -13,6 +13,14 @@ import { AgentLiveScreen } from './screens/AgentLiveScreen';
 import { AriaBotScreen } from './screens/AriaBotScreen';
 import { BasicInfoScreen } from './screens/BasicInfoScreen';
 import { BuildingAgentScreen } from './screens/BuildingAgentScreen';
+import {
+  ClaimCodeScreen,
+  ClaimEditableField,
+  ClaimLandingScreen,
+  ClaimPasswordScreen,
+  ClaimPrefill,
+  ClaimReviewScreen,
+} from './screens/ClaimFlowScreens';
 import { CvScreen } from './screens/CvScreen';
 import { GitHubScreen } from './screens/GitHubScreen';
 import { LinkedInScreen } from './screens/LinkedInScreen';
@@ -22,7 +30,18 @@ import { ForgotPasswordScreen } from './screens/ForgotPasswordScreen';
 import { ResetOtpScreen } from './screens/ResetOtpScreen';
 import { ResetPasswordScreen } from './screens/ResetPasswordScreen';
 import { WelcomeScreen } from './screens/WelcomeScreen';
-import { createStudentProfile, getMe, getStudentProfile, refreshAccessToken } from './services/api';
+import {
+  confirmStudentClaim,
+  createStudentProfile,
+  getAccessToken,
+  getMe,
+  getRefreshToken,
+  getStudentProfile,
+  refreshAccessToken,
+  registerStudent,
+  startStudentClaim,
+  verifyStudentClaim,
+} from './services/api';
 import { mockOnboardingServices } from './services/onboardingServices';
 import { clearSavedTokens, getSavedTokens, saveAccessToken, saveTokens } from './services/tokenStorage';
 import { onboardingReducer } from './state/onboardingReducer';
@@ -40,6 +59,19 @@ import {
 } from './services/notifications';
 
 const botIcon = require('./assets/bot.jpeg');
+
+const emptyClaimPrefill: ClaimPrefill = {
+  full_name: '',
+  email: '',
+  field_of_study: '',
+  degree_level: '',
+  expected_graduation: '',
+  phone: '',
+  year_in_college: '',
+  program_name: '',
+  city: '',
+  state: '',
+};
 
 function getFirstMissingOnboardingRoute(session: AuthSession): OnboardingRoute {
   const onboarding = session.user?.onboarding;
@@ -110,6 +142,45 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function getClaimTokenFromUrl(url?: string | null) {
+  if (!url) {
+    return '';
+  }
+
+  const rawUrl = url.trim();
+  const normalizedUrl = rawUrl.toLowerCase();
+
+  const isClaimUrl =
+    normalizedUrl.includes('/claim') ||
+    normalizedUrl.startsWith('kormicstudent://claim');
+
+  if (!isClaimUrl) {
+    return '';
+  }
+
+  let token = '';
+
+  if (rawUrl.includes('?')) {
+    const queryPart = rawUrl.split('?')[1]?.split('#')[0] ?? '';
+    const params = new URLSearchParams(queryPart);
+    token = params.get('token') ?? '';
+  }
+
+  if (!token && rawUrl.includes('#')) {
+    const hashPart = rawUrl.split('#')[1] ?? '';
+    if (hashPart.includes('?')) {
+      const hashQuery = hashPart.split('?')[1] ?? '';
+      const params = new URLSearchParams(hashQuery);
+      token = params.get('token') ?? '';
+    } else {
+      const params = new URLSearchParams(hashPart);
+      token = params.get('token') ?? '';
+    }
+  }
+
+  return token.trim();
+}
+
 function isTotpEnrollmentError(message: string) {
   return message.toLowerCase().includes('totp enrollment');
 }
@@ -121,6 +192,10 @@ function isAuthRoute(route: OnboardingRoute) {
   route === 'ForgotPassword' ||
   route === 'ResetOtp' ||
   route === 'ResetPassword' ||
+  route === 'ClaimLanding' ||
+  route === 'ClaimCode' ||
+  route === 'ClaimReview' ||
+  route === 'ClaimPassword' ||
   route === 'BasicInfo' ||
   route === 'SecuritySetup'
 );
@@ -158,6 +233,14 @@ export default function App() {
   const [notificationPollSince, setNotificationPollSince] = useState<string | undefined>();
   const [resetEmail, setResetEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
+  const [claimToken, setClaimToken] = useState('');
+  const [claimMaskedEmail, setClaimMaskedEmail] = useState('');
+  const [claimSession, setClaimSession] = useState('');
+  const [claimPrefill, setClaimPrefill] = useState<ClaimPrefill>(emptyClaimPrefill);
+  const [claimError, setClaimError] = useState('');
+  const [claimLoading, setClaimLoading] = useState(false);
+  const [claimResending, setClaimResending] = useState(false);
+  const claimLinkHandledRef = useRef(false);
 
   const navigate = useCallback((route: OnboardingRoute) => dispatch({ type: 'NAVIGATE', route }), []);
   const back = useCallback(() => dispatch({ type: 'BACK' }), []);
@@ -181,6 +264,181 @@ export default function App() {
     }
   }, [navigate, state]);
   const completeBuild = useCallback(() => navigate('AgentLive'), [navigate]);
+  const resetClaimState = useCallback(() => {
+    setClaimToken('');
+    setClaimMaskedEmail('');
+    setClaimSession('');
+    setClaimPrefill(emptyClaimPrefill);
+    setClaimError('');
+    setClaimLoading(false);
+    setClaimResending(false);
+  }, []);
+
+  const openClaimFromUrl = useCallback(
+    (url?: string | null) => {
+      const token = getClaimTokenFromUrl(url);
+      if (!token) {
+        return false;
+      }
+
+      claimLinkHandledRef.current = true;
+      resetClaimState();
+      setClaimToken(token);
+      setClaimError('');
+      navigate('ClaimLanding');
+      return true;
+    },
+    [navigate, resetClaimState],
+  );
+
+  const requestClaimCode = useCallback(async () => {
+    const token = claimToken.trim();
+    if (!token) {
+      setClaimError('Paste the invitation token before continuing.');
+      return;
+    }
+
+    setClaimLoading(true);
+    setClaimError('');
+    try {
+      const data = await startStudentClaim(token);
+      setClaimMaskedEmail(data.masked_email);
+      navigate('ClaimCode');
+    } catch (error) {
+      setClaimError(getErrorMessage(error, 'Unable to start invitation claim'));
+    } finally {
+      setClaimLoading(false);
+    }
+  }, [claimToken, navigate]);
+
+  const resendClaimCode = useCallback(async () => {
+    const token = claimToken.trim();
+    if (!token) {
+      setClaimError('Paste the invitation token before resending.');
+      return;
+    }
+
+    setClaimResending(true);
+    setClaimError('');
+    try {
+      const data = await startStudentClaim(token);
+      setClaimMaskedEmail(data.masked_email);
+    } catch (error) {
+      setClaimError(getErrorMessage(error, 'Unable to resend invitation code'));
+    } finally {
+      setClaimResending(false);
+    }
+  }, [claimToken]);
+
+  const verifyClaimCode = useCallback(
+    async (code: string) => {
+      const token = claimToken.trim();
+      if (!token) {
+        setClaimError('Invitation token is missing. Go back and paste the invite token again.');
+        return;
+      }
+
+      setClaimLoading(true);
+      setClaimError('');
+      try {
+        const data = await verifyStudentClaim({ token, code });
+        setClaimSession(data.claim_session);
+        setClaimPrefill({
+          ...emptyClaimPrefill,
+          ...data.prefill,
+        });
+        navigate('ClaimReview');
+      } catch (error) {
+        setClaimError(getErrorMessage(error, 'Unable to verify invitation code'));
+      } finally {
+        setClaimLoading(false);
+      }
+    },
+    [claimToken, navigate],
+  );
+
+  const updateClaimPrefill = useCallback((field: ClaimEditableField, value: string) => {
+    setClaimPrefill((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }, []);
+
+  const confirmClaimProfile = useCallback(async () => {
+    if (!claimSession) {
+      setClaimError('Claim session is missing. Request a fresh code and try again.');
+      navigate('ClaimCode');
+      return;
+    }
+
+    setClaimLoading(true);
+    setClaimError('');
+    try {
+      await confirmStudentClaim({
+        claimSession,
+        fields: {
+          full_name: claimPrefill.full_name,
+          field_of_study: claimPrefill.field_of_study,
+          degree_level: claimPrefill.degree_level,
+          expected_graduation: claimPrefill.expected_graduation,
+          phone: claimPrefill.phone,
+          year_in_college: claimPrefill.year_in_college,
+          program_name: claimPrefill.program_name,
+          city: claimPrefill.city,
+          state: claimPrefill.state,
+        },
+      });
+      navigate('ClaimPassword');
+    } catch (error) {
+      setClaimError(getErrorMessage(error, 'Unable to confirm invitation claim'));
+    } finally {
+      setClaimLoading(false);
+    }
+  }, [claimPrefill, claimSession, navigate]);
+
+  const createClaimAccount = useCallback(
+    async (password: string) => {
+      if (!claimPrefill.email) {
+        setClaimError('Claim email is missing. Verify your invitation code again.');
+        navigate('ClaimCode');
+        return;
+      }
+
+      setClaimLoading(true);
+      setClaimError('');
+      try {
+        const data = await registerStudent({
+          email: claimPrefill.email,
+          password,
+          name: claimPrefill.full_name || claimPrefill.email,
+        });
+        const access = getAccessToken(data);
+        const refresh = getRefreshToken(data);
+        if (!access) {
+          throw new Error('Account was created, but no access token was returned.');
+        }
+
+        const session: AuthSession = {
+          access,
+          refresh,
+          user: data.user,
+          mustEnrollTotp: Boolean(data.must_enroll_totp),
+          totpRequired: false,
+          profileCreated: true,
+        };
+
+        await saveTokens(session);
+        dispatch({ type: 'SET_AUTH_SESSION', session });
+        navigate('SecuritySetup');
+      } catch (error) {
+        setClaimError(getErrorMessage(error, 'Unable to create invited student account'));
+      } finally {
+        setClaimLoading(false);
+      }
+    },
+    [claimPrefill.email, claimPrefill.full_name, navigate],
+  );
+
   const loadProfileForSession = useCallback(async (session: AuthSession) => {
     setProfileError('');
     setProfileLoading(true);
@@ -310,9 +568,25 @@ export default function App() {
   }, [navigate]);
 
   useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      openClaimFromUrl(url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [openClaimFromUrl]);
+
+  useEffect(() => {
     let active = true;
 
     const restore = async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (openClaimFromUrl(initialUrl)) {
+        setRestoringSession(false);
+        return;
+      }
+
       const tokens = await getSavedTokens();
       if (!tokens) {
         setRestoringSession(false);
@@ -352,7 +626,9 @@ export default function App() {
         const route = getFirstMissingOnboardingRoute(session);
         const openChat = await shouldOpenAgentChatFromLastNotification();
 
-        if (openChat) {
+        if (claimLinkHandledRef.current) {
+          navigate('ClaimLanding');
+        } else if (openChat) {
           setBotReturnRoute('Profile');
           setBotNotificationRefreshKey((current) => current + 1);
           navigate('BotScreen');
@@ -423,7 +699,16 @@ export default function App() {
   const content = (() => {
     switch (state.route) {
       case 'Welcome':
-        return <WelcomeScreen onStart={() => navigate('BasicInfo')} onLogin={() => navigate('Login')} />;
+        return (
+          <WelcomeScreen
+            onStart={() => navigate('BasicInfo')}
+            onLogin={() => navigate('Login')}
+            onClaim={() => {
+              resetClaimState();
+              navigate('ClaimLanding');
+            }}
+          />
+        );
       case 'Login':
         return (
           <LoginScreen
@@ -466,6 +751,66 @@ export default function App() {
             onExpired={() => {
               setResetToken('');
               navigate('ForgotPassword');
+            }}
+          />
+        );
+      case 'ClaimLanding':
+        return (
+          <ClaimLandingScreen
+            token={claimToken}
+            loading={claimLoading}
+            error={claimError}
+            onTokenChange={(token) => {
+              setClaimToken(token);
+              setClaimError('');
+            }}
+            onRequestCode={requestClaimCode}
+            onBackToWelcome={() => {
+              resetClaimState();
+              navigate('Welcome');
+            }}
+          />
+        );
+      case 'ClaimCode':
+        return (
+          <ClaimCodeScreen
+            maskedEmail={claimMaskedEmail || 'your institute email'}
+            loading={claimLoading}
+            resending={claimResending}
+            error={claimError}
+            onVerify={verifyClaimCode}
+            onResend={resendClaimCode}
+            onBack={() => {
+              setClaimError('');
+              navigate('ClaimLanding');
+            }}
+          />
+        );
+      case 'ClaimReview':
+        return (
+          <ClaimReviewScreen
+            value={claimPrefill}
+            loading={claimLoading}
+            error={claimError}
+            onChange={updateClaimPrefill}
+            onConfirm={confirmClaimProfile}
+            onBack={() => {
+              setClaimError('');
+              navigate('ClaimCode');
+            }}
+          />
+        );
+      case 'ClaimPassword':
+        return (
+          <ClaimPasswordScreen
+            email={claimPrefill.email}
+            fullName={claimPrefill.full_name}
+            loading={claimLoading}
+            error={claimError}
+            onCreateAccount={createClaimAccount}
+            onBack={() => {
+              setClaimError('');
+              navigate('ClaimReview');
             }}
           />
         );

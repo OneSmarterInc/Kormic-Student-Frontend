@@ -91,6 +91,41 @@ export interface ConfirmResetPasswordResponse {
   detail: string;
 }
 
+export interface ClaimStartResponse {
+  masked_email: string;
+}
+
+export interface ClaimPrefillResponse {
+  full_name: string;
+  email: string;
+  field_of_study: string;
+  degree_level: string;
+  expected_graduation: string;
+  phone: string;
+  year_in_college: string;
+  program_name: string;
+  city: string;
+  state: string;
+  institute_id?: string;
+  institute_name?: string;
+}
+
+export interface ClaimVerifyResponse {
+  claim_session: string;
+  prefill: ClaimPrefillResponse;
+}
+
+export interface ClaimConfirmResponse {
+  status?: string;
+  student_id?: string;
+  confirmed?: Partial<ClaimPrefillResponse>;
+  divergences_recorded?: number;
+  badge?: {
+    institute_sourced?: boolean;
+    institute_name?: string;
+  };
+}
+
 
 export interface ResumeRecord {
   id: number | string;
@@ -515,6 +550,61 @@ export function registerStudent(payload: {
       body: JSON.stringify({ ...payload, role: 'student' }),
     },
     'Unable to create account',
+  );
+}
+
+export function startStudentClaim(token: string) {
+  return requestJson<ClaimStartResponse>(
+    '/claim/start/',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token.trim() }),
+    },
+    'Unable to start invitation claim',
+  );
+}
+
+export function verifyStudentClaim(payload: { token: string; code: string }) {
+  return requestJson<ClaimVerifyResponse>(
+    '/claim/verify/',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: payload.token.trim(),
+        code: payload.code.trim(),
+      }),
+    },
+    'Unable to verify invitation code',
+  );
+}
+
+export function confirmStudentClaim(payload: {
+  claimSession: string;
+  fields: {
+    full_name: string;
+    field_of_study: string;
+    degree_level: string;
+    expected_graduation: string;
+    phone: string;
+    year_in_college: string;
+    program_name: string;
+    city: string;
+    state: string;
+  };
+}) {
+  return requestJson<ClaimConfirmResponse>(
+    '/claim/confirm/',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        claim_session: payload.claimSession,
+        fields: payload.fields,
+      }),
+    },
+    'Unable to confirm invitation claim',
   );
 }
 

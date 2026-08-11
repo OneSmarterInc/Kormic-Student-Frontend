@@ -73,6 +73,7 @@ export function ClaimLandingScreen({
 
   return (
     <ScreenShell
+      header={<ClaimStepHeader step="1" total="5" label="Invitation claim" onBack={onBackToWelcome} />}
       footer={
         <View style={styles.footerStack}>
           <PrimaryButton label="Send verification code" onPress={onRequestCode} disabled={!hasToken} loading={loading} />
@@ -81,7 +82,6 @@ export function ClaimLandingScreen({
       }
     >
       <View style={styles.content}>
-        <ClaimStepHeader step="1" total="5" label="Invitation claim" />
         <View style={styles.heroIcon}>
           <Text style={styles.heroIconText}>ID</Text>
         </View>
@@ -131,6 +131,7 @@ export function ClaimCodeScreen({
 
   return (
     <ScreenShell
+      header={<ClaimStepHeader step="2" total="5" label="Email check" onBack={onBack} />}
       footer={
         <View style={styles.footerStack}>
           <PrimaryButton label="Verify code" onPress={() => onVerify(normalizedCode)} disabled={!canContinue} loading={loading} />
@@ -139,7 +140,6 @@ export function ClaimCodeScreen({
       }
     >
       <View style={styles.content}>
-        <ClaimStepHeader step="2" total="5" label="Email check" onBack={onBack} />
         <Text style={styles.title}>Enter your code</Text>
         <Text style={styles.subhead}>We sent a 6-digit code to {maskedEmail}. It expires soon.</Text>
 
@@ -179,9 +179,11 @@ export function ClaimReviewScreen({ value, loading = false, error, onChange, onC
   const update = (field: ClaimEditableField) => (nextValue: string) => onChange(field, nextValue);
 
   return (
-    <ScreenShell footer={<PrimaryButton label="Confirm profile" onPress={onConfirm} disabled={missingRequired} loading={loading} />}>
+    <ScreenShell
+      header={<ClaimStepHeader step="3" total="5" label="Review details" onBack={onBack} />}
+      footer={<PrimaryButton label="Confirm profile" onPress={onConfirm} disabled={missingRequired} loading={loading} />}
+    >
       <View style={styles.contentTop}>
-        <ClaimStepHeader step="3" total="5" label="Review details" onBack={onBack} />
         <Text style={styles.title}>Review your student details</Text>
         <Text style={styles.subhead}>These details came from your institute. Correct anything that is outdated before you continue.</Text>
 
@@ -238,6 +240,7 @@ export function ClaimPasswordScreen({
 
   return (
     <ScreenShell
+      header={<ClaimStepHeader step="4" total="5" label="Account setup" onBack={onBack} />}
       footer={
         <View style={styles.footerStack}>
           <PrimaryButton label="Create account" onPress={() => onCreateAccount(password)} disabled={!canContinue} loading={loading} />
@@ -246,7 +249,6 @@ export function ClaimPasswordScreen({
       }
     >
       <View style={styles.content}>
-        <ClaimStepHeader step="4" total="5" label="Account setup" />
         <Text style={styles.title}>Set your password</Text>
         <Text style={styles.subhead}>This creates the login account for {fullName || email}. TOTP setup comes next.</Text>
 
@@ -289,11 +291,21 @@ export function ClaimPasswordScreen({
   );
 }
 
-export function ClaimTotpBridgeScreen({ onContinue, loading = false }: { onContinue: () => void; loading?: boolean }) {
+export function ClaimTotpBridgeScreen({
+  onContinue,
+  onBack,
+  loading = false,
+}: {
+  onContinue: () => void;
+  onBack?: () => void;
+  loading?: boolean;
+}) {
   return (
-    <ScreenShell footer={<PrimaryButton label="Set up security" onPress={onContinue} loading={loading} />}>
+    <ScreenShell
+      header={<ClaimStepHeader step="5" total="5" label="Security" onBack={onBack} />}
+      footer={<PrimaryButton label="Set up security" onPress={onContinue} loading={loading} />}
+    >
       <View style={styles.content}>
-        <ClaimStepHeader step="5" total="5" label="Security" />
         <View style={styles.heroIcon}>
           <Text style={styles.heroIconText}>2FA</Text>
         </View>
@@ -364,7 +376,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 18,
   },
   backButton: {
     alignItems: 'center',

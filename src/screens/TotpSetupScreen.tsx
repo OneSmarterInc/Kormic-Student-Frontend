@@ -38,6 +38,7 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
   const [secret, setSecret] = useState('');
   const [provisioningUri, setProvisioningUri] = useState('');
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [verifiedSession, setVerifiedSession] = useState<AuthSession | undefined>();
   const [loadingEnrollment, setLoadingEnrollment] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [openingAuthenticator, setOpeningAuthenticator] = useState(false);
@@ -140,10 +141,12 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
     try {
       setVerifying(true);
       let nextSession: AuthSession;
+      let nextBackupCodes: string[] = [];
 
       if (isEnrollment && authSession.access) {
         const data = await verifyTotpEnrollment(authSession.access, code);
-        setBackupCodes(data.backup_codes ?? []);
+        nextBackupCodes = data.backup_codes ?? [];
+        setBackupCodes(nextBackupCodes);
         nextSession = {
           ...authSession,
           access: getAccessToken(data) ?? authSession.access,
@@ -179,6 +182,10 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
 
       const completedSession = authSession.profileCreated ? markProfileExists(nextSession) : nextSession;
       onAuthenticated(completedSession);
+      if (isEnrollment && nextBackupCodes.length > 0) {
+        setVerifiedSession(completedSession);
+        return;
+      }
       onContinue(completedSession);
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : 'Unable to verify the TOTP code');
@@ -189,30 +196,56 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
 
   const canVerify = !loadingEnrollment && !verifying && (isEnrollment ? Boolean(secret) : Boolean(authSession?.mfaToken));
   const qrRows = useMemo(() => createQrRows(provisioningUri), [provisioningUri]);
+  const showingBackupCodes = backupCodes.length > 0 && Boolean(verifiedSession);
+
+  const finishAfterBackupCodes = () => {
+    if (verifiedSession) {
+      onContinue(verifiedSession);
+    }
+  };
 
   return (
     <ScreenShell
       footer={
-        <PrimaryButton
-          label="Verify and continue"
-          onPress={verifyOtp}
-          disabled={!canVerify}
-          loading={verifying}
-        />
+        showingBackupCodes ? (
+          <PrimaryButton label="I saved my codes" onPress={finishAfterBackupCodes} />
+        ) : (
+          <PrimaryButton
+            label="Verify and continue"
+            onPress={verifyOtp}
+            disabled={!canVerify}
+            loading={verifying}
+          />
+        )
       }
     >
       <View style={styles.content}>
 
      
-      <Text style={styles.title}>{isEnrollment ? 'Secure your account' : 'Verify your sign in'}</Text>
+      <Text style={styles.title}>
+        {showingBackupCodes ? 'Save your backup codes' : isEnrollment ? 'Secure your account' : 'Verify your sign in'}
+      </Text>
       <Text style={styles.subhead}>
-        {isEnrollment
+        {showingBackupCodes
+          ? 'These codes can help recover your account. Save them now; they are shown only once.'
+          : isEnrollment
           ? 'Add Kormic to an authenticator app, then enter the 6-digit code it generates.'
           : 'Enter the 6-digit code from your authenticator app to continue.'}
       </Text>
 
       <View style={styles.form}>
-        {isEnrollment ? (
+        {showingBackupCodes ? (
+          <>
+            <SectionLabel>Backup codes</SectionLabel>
+            <View style={styles.backupPanel}>
+              {backupCodes.map((code) => (
+                <Text key={code} selectable style={styles.backupCode}>
+                  {code}
+                </Text>
+              ))}
+            </View>
+          </>
+        ) : isEnrollment ? (
           <>
             <SectionLabel>Authenticator setup</SectionLabel>
 
@@ -259,31 +292,31 @@ export default function TotpScreen({ authSession, basicInfo, onAuthenticated, on
           </>
         ) : null}
 
-        <SectionLabel>Verification code</SectionLabel>
-        <View style={styles.otpContainer}>
-          {otp.map((value, index) => (
-            <TextInput
-              key={index}
-              ref={(ref) => {
-                inputRefs.current[index] = ref;
-              }}
-              accessibilityLabel={`TOTP digit ${index + 1}`}
-              style={styles.otpInput}
-              value={value}
-              keyboardType="number-pad"
-              maxLength={index === 0 ? TOTP_LENGTH : 1}
-              onChangeText={(text) => handleChange(text, index)}
-              onKeyPress={(event) => {
-                if (event.nativeEvent.key === 'Backspace') {
-                  handleBackspace(index);
-                }
-              }}
-            />
-          ))}
-        </View>
-
-        {backupCodes.length > 0 ? (
-          <Text style={styles.helperText}>Backup codes created: {backupCodes.length}</Text>
+        {!showingBackupCodes ? (
+          <>
+            <SectionLabel>Verification code</SectionLabel>
+            <View style={styles.otpContainer}>
+              {otp.map((value, index) => (
+                <TextInput
+                  key={index}
+                  ref={(ref) => {
+                    inputRefs.current[index] = ref;
+                  }}
+                  accessibilityLabel={`TOTP digit ${index + 1}`}
+                  style={styles.otpInput}
+                  value={value}
+                  keyboardType="number-pad"
+                  maxLength={index === 0 ? TOTP_LENGTH : 1}
+                  onChangeText={(text) => handleChange(text, index)}
+                  onKeyPress={(event) => {
+                    if (event.nativeEvent.key === 'Backspace') {
+                      handleBackspace(index);
+                    }
+                  }}
+                />
+              ))}
+            </View>
+          </>
         ) : null}
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -408,6 +441,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyMedium,
     fontSize: 22,
     color: colors.offWhite,
+  },
+  backupPanel: {
+    backgroundColor: colors.panelInk,
+    borderColor: colors.line,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    gap: 10,
+    padding: 16,
+  },
+  backupCode: {
+    color: colors.offWhite,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 16,
+    letterSpacing: 0.5,
+    lineHeight: 22,
   },
   errorText: {
     color: colors.error,
