@@ -271,6 +271,10 @@ export interface AriaHistoryMessage {
   created_at?: string;
   edited_at?: string | null;
   meta?: Record<string, unknown>;
+  escalation?: {
+    query_id?: number | null;
+    status?: 'pending' | 'resolved' | 'ignored' | string;
+  } | null;
   attachments?: AriaAttachment[];
 }
 

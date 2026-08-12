@@ -36,14 +36,16 @@ import * as Sharing from 'expo-sharing';
 
 type ChatMessage = {
   id: string;
-  serviceId?: number | string;
+  serverId?: number | string;
   role: 'user' | 'aria';
   text: string;
   createdAt?: string;
   editedAt?: string | null;
   attachments?: AriaAttachment[];
   pending?: boolean;
-  queryId?: number | string | null;
+  queryId?: number | null;
+  escalationStatus?: 'pending' | 'resolved' | 'ignored' | string | null;
+  wasEscalatedPrompt?: boolean;
   confidence?: number | null;
 };
 
@@ -57,6 +59,11 @@ type ChatThread = {
 type ThreadGroup = {
   title: string;
   threads: ChatThread[];
+};
+
+export type AriaHeaderCommand = {
+  type: 'edit' | 'history';
+  id: number;
 };
 
 const SUGGESTED_PROMPT = 'How is my profile? What should I improve?';
@@ -336,6 +343,10 @@ export function AriaBotScreen({
         id: `aria-${Date.now()}`,
         role: 'aria',
         text: response.reply || response.message || `${response.agent || agentName} did not return a reply.`,
+        pending: response.pending === true,
+        queryId: typeof response.query_id === 'number' ? response.query_id : null,
+        escalationStatus: response.pending === true ? 'pending' : null,
+        confidence: typeof response.confidence === 'number' ? response.confidence : null,
       };
       setMessages((current) => {
         const nextMessages = [...current, ariaMessage];
@@ -530,6 +541,14 @@ export function AriaBotScreen({
                     >
                       <Text style={styles.bubbleLabel}>{message.role === 'user' ? 'You' : agentName}</Text>
                       <FormattedMessageText text={message.text} formatBold={message.role === 'aria'} />
+                      {message.role === 'aria' && message.escalationStatus === 'pending' ? (
+                        <Text style={styles.escalationText}>
+                          I'm checking with the university on this. I'll let you know.
+                        </Text>
+                      ) : null}
+                      {message.role === 'aria' && message.escalationStatus === 'resolved' && message.wasEscalatedPrompt ? (
+                        <Text style={styles.escalationResolvedText}>Answered by the university.</Text>
+                      ) : null}
                       {message.attachments?.length ? (
                         <View style={styles.attachmentList}>
                           {message.attachments.map((attachment) =>
@@ -907,6 +926,17 @@ function normalizeAriaHistory(messages: AriaHistoryMessage[]): ChatMessage[] {
     .filter((message) => message.content || message.attachments?.length)
     .map((message, index) => {
       const meta = message.meta ?? {};
+      const escalation = message.escalation ?? null;
+      const escalationQueryId = escalation?.query_id;
+      const metaQueryId = meta.query_id;
+      const queryId =
+        typeof escalationQueryId === 'number'
+          ? escalationQueryId
+          : typeof metaQueryId === 'number'
+            ? metaQueryId
+            : null;
+      const escalationStatus = escalation?.status ?? null;
+
       return {
         id: String(message.id ?? `${message.sender}-${message.created_at ?? index}`),
         serverId: message.id,
@@ -915,9 +945,10 @@ function normalizeAriaHistory(messages: AriaHistoryMessage[]): ChatMessage[] {
         createdAt: message.created_at,
         editedAt: message.edited_at,
         attachments: message.attachments ?? [],
-        pending: meta.pending === true,
-        queryId:
-          typeof meta.query_id === 'string' || typeof meta.query_id === 'number' ? meta.query_id : null,
+        pending: escalationStatus === 'pending' || meta.pending === true,
+        queryId,
+        escalationStatus,
+        wasEscalatedPrompt: meta.pending === true,
         confidence: typeof meta.confidence === 'number' ? meta.confidence : null,
       };
     });
@@ -1361,6 +1392,20 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 10,
   },
+  escalationText: {
+    color: colors.textSoft,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
+  },
+  escalationResolvedText: {
+    color: colors.coral,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 10,
+  },
   loadingText: {
     color: colors.textSoft,
     fontFamily: fonts.body,
@@ -1537,6 +1582,11 @@ const styles = StyleSheet.create({
   },
   copyButtonTextActive: {
     color: colors.coral,
+  },
+  copyButtonText: {
+    color: colors.textSoft,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
   },
   attachButton: {
     alignItems: 'center',

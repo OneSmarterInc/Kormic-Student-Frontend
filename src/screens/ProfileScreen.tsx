@@ -16,7 +16,7 @@ import { SectionLabel } from '../components/SectionLabel';
 import { TextField } from '../components/TextField';
 import { AuthSession, LinkedInScreenshot } from '../models/onboarding';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { AriaBotScreen } from './AriaBotScreen';
+import { AriaBotScreen, AriaHeaderCommand } from './AriaBotScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -155,11 +155,6 @@ interface ProfileScreenProps {
 }
 
 type ProfileSection = 'overview' | 'edit' | 'resumes' | 'github' | 'linkedin' | 'aria';
-
-type AriaHeaderCommand = {
-  type: 'edit' | 'history';
-  id: number;
-};
 
 const EXTRACTED_DATA_SECTIONS = [
   {
@@ -507,7 +502,7 @@ export function ProfileScreen({
       gre_verbal: formatDraftValue(profile.gre_verbal),
       toefl: formatDraftValue(profile.toefl),
       ielts: formatDraftValue(profile.ielts),
-      english_score_text: profile.english_score_text || profile.english_score || '',
+      english_score_text: String(firstProvidedValue(profile.english_score, profile.english_score_text) ?? ''),
       budget: formatDraftValue(profile.budget),
     });
   }, [profile]);
@@ -877,15 +872,16 @@ export function ProfileScreen({
         english_score_text: englishScoreValue,
         budget: toOptionalNumber(profileDraft.budget),
       });
+      const updatedProfileRecord = getProfileFieldRecord(updatedProfile.profile);
       await onProfileChanged?.(
         normalizeStudentProfile({
           ...updatedProfile,
           english_score: updatedProfile.english_score ?? englishScoreValue,
           english_score_text: updatedProfile.english_score_text || englishScoreValue,
           profile: {
-            ...(updatedProfile.profile ?? {}),
-            english_score: updatedProfile.profile?.english_score ?? englishScoreValue,
-            english_score_text: updatedProfile.profile?.english_score_text || englishScoreValue,
+            ...updatedProfileRecord,
+            english_score: updatedProfileRecord.english_score ?? englishScoreValue,
+            english_score_text: updatedProfileRecord.english_score_text || englishScoreValue,
           },
         }),
       );
@@ -1244,7 +1240,9 @@ export function ProfileScreen({
                   <FieldRow label="IELTS" value={formatValue(profile.ielts)} />
                   <FieldRow
                     label="English score"
-                    value={formatValue(firstProvidedValue(profile.english_score, profile.english_score_text))}
+                    value={formatValue(
+                      String(firstProvidedValue(profile.english_score, profile.english_score_text) ?? ''),
+                    )}
                   />
                   <FieldRow
                     label="Budget"
@@ -1406,6 +1404,10 @@ function firstProvidedValue(...values: unknown[]) {
       String(value).trim() !== '' &&
       String(value).trim().toLowerCase() !== 'not provided',
   );
+}
+
+function getProfileFieldRecord(value: unknown) {
+  return getRecord(value) ?? {};
 }
 
 function normalizeStudentProfile(profile: StudentProfile | Record<string, unknown>): StudentProfile {
@@ -1730,6 +1732,7 @@ function EditProfileForm({
   imageLoading: boolean;
   loading: boolean;
   error: string;
+  fieldErrors: Record<string, string>;
   onChange: (field: keyof typeof draft, value: string) => void;
   onReplaceImage: () => void;
   onRemoveImage: () => void;
@@ -3168,6 +3171,10 @@ const styles = StyleSheet.create({
   },
   sidebarItemActive: {
     backgroundColor: 'rgba(255,107,74,0.16)',
+  },
+  sidebarLogoutItem: {
+    borderColor: 'rgba(255,143,126,0.25)',
+    borderWidth: 1,
   },
   sidebarItemText: {
     color: colors.textSoft,
