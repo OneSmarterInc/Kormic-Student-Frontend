@@ -546,7 +546,7 @@ export function AriaBotScreen({
                           I'm checking with the university on this. I'll let you know.
                         </Text>
                       ) : null}
-                      {message.role === 'aria' && message.escalationStatus === 'resolved' && message.wasEscalatedPrompt ? (
+                      {message.role === 'aria' && message.escalationStatus === 'resolved' ? (
                         <Text style={styles.escalationResolvedText}>Answered by the university.</Text>
                       ) : null}
                       {message.attachments?.length ? (
