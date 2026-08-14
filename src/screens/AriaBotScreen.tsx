@@ -197,6 +197,52 @@ export function AriaBotScreen({
     shouldScrollMessagesToEndRef.current = true;
   }, [messages.length, loading, historyLoading]);
 
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    const hasPendingEscalation = messages.some(
+      (message) => message.role === 'aria' && message.escalationStatus === 'pending',
+    );
+
+    if (!hasPendingEscalation) {
+      return;
+    }
+
+    console.log('[Aria] Pending escalation detected. Starting auto-refresh.');
+
+    const interval = setInterval(async () => {
+      try {
+        console.log('[Aria] Checking for university response...');
+
+        const history = await getAriaHistory(session);
+        const nextHistory = normalizeAriaHistory(history.messages ?? []);
+
+        setHistoryMessages(nextHistory);
+        cacheAriaMessages(session, nextHistory);
+
+        setMessages(nextHistory.length > 0 ? nextHistory : [getWelcomeMessage(agentName)]);
+
+        const stillPending = nextHistory.some(
+          (message) => message.role === 'aria' && message.escalationStatus === 'pending',
+        );
+
+        console.log('[Aria] Auto-refresh result:', {
+          messageCount: nextHistory.length,
+          stillPending,
+        });
+      } catch (error) {
+        console.log('[Aria] Auto-refresh failed:', error);
+      }
+    }, 5000);
+
+    return () => {
+      console.log('[Aria] Stopping auto-refresh.');
+      clearInterval(interval);
+    };
+  }, [session, messages, agentName]);
+
   const applyAgentName = (nextAgentName: string) => {
     setAgentName(nextAgentName);
     setNameDraft(nextAgentName);
@@ -540,7 +586,11 @@ export function AriaBotScreen({
                       style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.ariaBubble]}
                     >
                       <Text style={styles.bubbleLabel}>{message.role === 'user' ? 'You' : agentName}</Text>
-                      <FormattedMessageText text={message.text} formatBold={message.role === 'aria'} />
+                    <FormattedMessageText
+  text={message.text}
+  formatBold={message.role === 'aria'}
+  isUniversityResponse={message.escalationStatus === 'resolved'}
+/>
                       {message.role === 'aria' && message.escalationStatus === 'pending' ? (
                         <Text style={styles.escalationText}>
                           I'm checking with the university on this. I'll let you know.
@@ -954,7 +1004,23 @@ function normalizeAriaHistory(messages: AriaHistoryMessage[]): ChatMessage[] {
     });
 }
 
-function FormattedMessageText({ text, formatBold }: { text: string; formatBold: boolean }) {
+function FormattedMessageText({ text, formatBold, isUniversityResponse,}: { text: string; formatBold: boolean, isUniversityResponse: boolean; }) {
+
+  if(isUniversityResponse){
+    const questionMatch=text.match(/^Q\d+:\s*["“](.*?)["”]\s*(?:\n|$)/s);
+
+    if(questionMatch){
+      const question=questionMatch[1];
+      const answer=text.slice(questionMatch[0].length);
+
+      return(
+         <Text style={styles.bubbleText}>
+          <Text style={styles.boldText}>{question}</Text>
+          {answer ? `\n\n${answer}` : ''}
+        </Text>
+      );
+    }
+  }
   const segments = formatBold ? getBoldSegments(text) : [{ text, bold: false }];
 
   return (

@@ -264,7 +264,7 @@ export async function pollNotifications(session?: AuthSession, since?: string) {
     return { nextSince: since, hasAgentNotification: false };
   }
 
-  const params = new URLSearchParams({ limit: '20' });
+  const params = new URLSearchParams({ limit: '200' });
   if (since) params.set('since', since);
 
   const response = await fetch(`${API_BASE_URL}/notifications/poll/?${params.toString()}`, {
