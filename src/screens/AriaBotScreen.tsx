@@ -47,6 +47,9 @@ type ChatMessage = {
   escalationStatus?: 'pending' | 'resolved' | 'ignored' | string | null;
   wasEscalatedPrompt?: boolean;
   confidence?: number | null;
+  meta?: Record<string, unknown>;
+  question?: string;
+  answer?: string;
 };
 
 type ChatThread = {
@@ -587,10 +590,12 @@ export function AriaBotScreen({
                     >
                       <Text style={styles.bubbleLabel}>{message.role === 'user' ? 'You' : agentName}</Text>
                     <FormattedMessageText
-  text={message.text}
-  formatBold={message.role === 'aria'}
-  isUniversityResponse={message.escalationStatus === 'resolved'}
-/>
+                      text={message.text}
+                      formatBold={message.role === 'aria'}
+                      isUniversityResponse={message.escalationStatus === 'resolved'}
+                      question={message.question}
+                      answer={message.answer}
+                    />
                       {message.role === 'aria' && message.escalationStatus === 'pending' ? (
                         <Text style={styles.escalationText}>
                           I'm checking with the university on this. I'll let you know.
@@ -986,6 +991,8 @@ function normalizeAriaHistory(messages: AriaHistoryMessage[]): ChatMessage[] {
             ? metaQueryId
             : null;
       const escalationStatus = escalation?.status ?? null;
+      const question = typeof meta.question === 'string' ? meta.question : undefined;
+      const answer = typeof meta.answer === 'string' ? meta.answer : undefined;
 
       return {
         id: String(message.id ?? `${message.sender}-${message.created_at ?? index}`),
@@ -1000,27 +1007,36 @@ function normalizeAriaHistory(messages: AriaHistoryMessage[]): ChatMessage[] {
         escalationStatus,
         wasEscalatedPrompt: meta.pending === true,
         confidence: typeof meta.confidence === 'number' ? meta.confidence : null,
+        meta,
+        question,
+        answer,
       };
     });
 }
 
-function FormattedMessageText({ text, formatBold, isUniversityResponse,}: { text: string; formatBold: boolean, isUniversityResponse: boolean; }) {
-
-  if(isUniversityResponse){
-    const questionMatch=text.match(/^Q\d+:\s*["“](.*?)["”]\s*(?:\n|$)/s);
-
-    if(questionMatch){
-      const question=questionMatch[1];
-      const answer=text.slice(questionMatch[0].length);
-
-      return(
-         <Text style={styles.bubbleText}>
-          <Text style={styles.boldText}>{question}</Text>
-          {answer ? `\n\n${answer}` : ''}
-        </Text>
-      );
-    }
+function FormattedMessageText({
+  text,
+  formatBold,
+  isUniversityResponse,
+  question,
+  answer,
+}: {
+  text: string;
+  formatBold: boolean;
+  isUniversityResponse: boolean;
+  question?: string;
+  answer?: string;
+}) {
+  if (isUniversityResponse && question) {
+    const displayAnswer = (answer ?? text).trim();
+    return (
+      <Text style={styles.bubbleText}>
+        <Text style={styles.boldText}>{question}</Text>
+        {displayAnswer ? `\n\n${displayAnswer}` : ''}
+      </Text>
+    );
   }
+
   const segments = formatBold ? getBoldSegments(text) : [{ text, bold: false }];
 
   return (
