@@ -171,22 +171,37 @@ export function AriaBotScreen({
   async function openProtectedAttachment(attachment: AriaAttachment, accessToken?: string) {
     if (!attachment.url || !accessToken) return;
 
-    const extension =
-      attachment.filename?.split('.').pop() || (attachment.content_type?.includes('pdf') ? 'pdf' : 'file');
+    try {
+      setError('');
 
-    const localPath = `${FileSystem.cacheDirectory}${attachment.id}-${attachment.filename || `attachment.${extension}`}`;
+      if (Platform.OS === 'web') {
+        await Linking.openURL(attachment.url);
+        return;
+      }
 
-    const download = await FileSystem.downloadAsync(attachment.url, localPath, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+      const extension =
+        attachment.filename?.split('.').pop() || (attachment.content_type?.includes('pdf') ? 'pdf' : 'file');
 
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(download.uri, {
-        mimeType: attachment.content_type,
-        dialogTitle: attachment.filename,
+      const localPath = `${FileSystem.cacheDirectory}${attachment.id}-${attachment.filename || `attachment.${extension}`}`;
+
+      const download = await FileSystem.downloadAsync(attachment.url, localPath, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(download.uri, {
+          mimeType: attachment.content_type,
+          dialogTitle: attachment.filename,
+        });
+      } else {
+        await Linking.openURL(download.uri);
+      }
+    } catch (openError) {
+      setError(
+        openError instanceof Error ? openError.message : 'Unable to open or share attachment.',
+      );
     }
   }
 
@@ -418,14 +433,25 @@ export function AriaBotScreen({
 
   const copyResponse = async (message: ChatMessage) => {
     try {
-      await Clipboard.setStringAsync(message.text);
+      setError('');
+
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(message.text);
+      } else {
+        await Clipboard.setStringAsync(message.text);
+      }
+
       setCopiedMessageId(message.id);
 
       setTimeout(() => {
         setCopiedMessageId((current) => (current === message.id ? undefined : current));
       }, 1600);
-    } catch {
-      setError('Unable to copy response.');
+    } catch (copyError) {
+      setError(
+        copyError instanceof Error
+          ? `Clipboard access failed: ${copyError.message}`
+          : 'Unable to copy response to clipboard.',
+      );
     }
   };
 

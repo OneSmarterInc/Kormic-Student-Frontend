@@ -4,10 +4,15 @@ import { parseGraduationYear } from '../utils/validation';
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
-const DEFAULT_API_BASE_URL = 'https://backend.kormic.ai/api';
+const envApiBaseUrl = typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL?.trim() : undefined;
 
-export const API_BASE_URL =
-  typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL : DEFAULT_API_BASE_URL;
+if (!envApiBaseUrl) {
+  console.warn(
+    '[api] Warning: EXPO_PUBLIC_API_BASE_URL environment variable is not defined. Please set it in your .env file.',
+  );
+}
+
+export const API_BASE_URL = envApiBaseUrl || '';
 
 interface ApiErrorBody {
   detail?: string;
