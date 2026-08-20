@@ -6,13 +6,16 @@ declare const process: { env?: Record<string, string | undefined> } | undefined;
 
 const envApiBaseUrl = typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL?.trim() : undefined;
 
+console.log("API BASE URL:", envApiBaseUrl);
+
+
 if (!envApiBaseUrl) {
   console.warn(
     '[api] Warning: EXPO_PUBLIC_API_BASE_URL environment variable is not defined. Please set it in your .env file.',
   );
 }
 
-export const API_BASE_URL = envApiBaseUrl || '';
+export const API_BASE_URL = envApiBaseUrl || 'https://backend.kormic.ai/api';
 
 interface ApiErrorBody {
   detail?: string;
