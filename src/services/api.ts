@@ -6,9 +6,6 @@ declare const process: { env?: Record<string, string | undefined> } | undefined;
 
 const envApiBaseUrl = typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL?.trim() : undefined;
 
-console.log("API BASE URL:", envApiBaseUrl);
-
-
 if (!envApiBaseUrl) {
   console.warn(
     '[api] Warning: EXPO_PUBLIC_API_BASE_URL environment variable is not defined. Please set it in your .env file.',
@@ -881,7 +878,10 @@ export function uploadLinkedIn(session: AuthSession, screenshots: LinkedInScreen
   );
 }
 
-export function updateProfileFields(session: AuthSession, payload: Record<string, unknown>) {
+export function updateProfileFields(
+  session: AuthSession,
+  payload: Record<string, unknown>,
+) {
   return requestWithSession<Record<string, unknown>>(
     session,
     '/profile/',
@@ -890,8 +890,20 @@ export function updateProfileFields(session: AuthSession, payload: Record<string
       headers: authHeaders(accessToken),
       body: JSON.stringify(payload),
     }),
-    'Unable to update profile',
-  ).then(normalizeProfileResponse);
+    'Above field already has a value and cannot be cleared to null. Provide a number (0 is allowed) instead.',
+  )
+    .then(normalizeProfileResponse)
+    .catch((error: any) => {
+      const backendErrors =
+        error?.errors ||
+        error?.response?.errors ||
+        error?.data?.errors;
+
+         if (backendErrors) {
+        throw new Error(backendErrors);
+      }
+      throw error;
+    });
 }
 
 export function getStudentProfile(session: AuthSession) {

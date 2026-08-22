@@ -910,7 +910,7 @@ export function AriaBotScreen({
                     accessibilityRole="button"
                     disabled={loading || (!draft.trim() && selectedAttachments.length === 0)}
                     onPress={sendMessage}
-                    style={[styles.sendButton, (loading || !draft.trim()) && styles.disabledButton]}
+                    style={styles.sendButton}
                   >
                     {loading ? (
                       <ActivityIndicator color="#1A0F0A" size="small" />

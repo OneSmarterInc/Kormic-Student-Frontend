@@ -1127,6 +1127,11 @@ export function ProfileScreen({
                 onPrimary={() => undefined}
                 onSecondary={runGithubAnalysis}
               />
+
+              {sectionError ? (
+                <Text style={styles.errorTextMsg}>{sectionError}</Text>
+              ): null}
+
               <GithubAnalysisDetails
                 loading={githubLoading}
                 currentAnalysis={githubAnalysis}
@@ -1324,8 +1329,8 @@ export function ProfileScreen({
                 <InfoCard>
                   <Text style={styles.bodyText}>{profile.notes}</Text>
                   <View style={styles.metaRow}>
-                    <Text style={styles.metaText}>Created: {profile.created_at}</Text>
-                    <Text style={styles.metaText}>Updated: {profile.updated_at}</Text>
+                    <Text style={styles.metaText}>Created: {formatDateTime(profile.created_at)}</Text>
+                    <Text style={styles.metaText}>Updated: {formatDateTime(profile.updated_at)}</Text>
                   </View>
                 </InfoCard>
               </View>
@@ -1524,7 +1529,7 @@ function normalizeStudentProfile(profile: StudentProfile | Record<string, unknow
     technical_skills: technicalSkills,
     soft_skills: getStringArray(skillsBlock.soft_skills) || getStringArray(rawProfile.soft_skills) || [],
     projects,
-    research: rawProfile.research ?? researchBlock.research ?? resumeEvidence?.research ?? '',
+    research: researchBlock.research ?? resumeEvidence?.research ?? '',
     research_interests:
       getStringArray(researchBlock.research_interests) || getStringArray(rawProfile.research_interests) || [],
     publications_count:
@@ -1632,6 +1637,26 @@ function getExperienceSummary(value: unknown) {
     .filter(Boolean)
     .join('; ');
 }
+
+const formatDateTime = (dateString) => {
+  if (!dateString) return "";
+
+  const date = new Date(dateString.replace(" ", "T"));
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = date.toLocaleString("en-US", { month: "short" });
+  const year = date.getFullYear();
+
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  const ampm = hours >= 12 ? "PM" : "AM";
+
+  hours = hours % 12 || 12;
+  const formattedHours = String(hours).padStart(2, "0");
+
+  return `${day} ${month} ${year} - ${formattedHours}:${minutes} ${ampm}`;
+};
 
 function sectionTitle(section: ProfileSection, agentName: string) {
   switch (section) {
@@ -3273,11 +3298,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   errorText: {
-    color: colors.textSoft,
+    color: colors.coral,
     fontFamily: fonts.body,
     fontSize: 13,
     lineHeight: 19,
   },
+  errorTextMsg: {
+  color: colors.coral,
+  fontSize: 14,
+  marginTop: 4,
+  marginBottom: 12,
+},
   header: {
     alignItems: 'center',
     flexDirection: 'row',
