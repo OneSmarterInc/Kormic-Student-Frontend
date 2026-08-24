@@ -31,6 +31,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
@@ -65,7 +66,7 @@ type ThreadGroup = {
 };
 
 export type AriaHeaderCommand = {
-  type: 'edit' | 'history';
+  type: 'edit' | 'history' | 'download';
   id: number;
 };
 
@@ -110,6 +111,7 @@ export function AriaBotScreen({
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(DEFAULT_AGENT_NAME);
@@ -199,9 +201,7 @@ export function AriaBotScreen({
         await Linking.openURL(download.uri);
       }
     } catch (openError) {
-      setError(
-        openError instanceof Error ? openError.message : 'Unable to open or share attachment.',
-      );
+      setError(openError instanceof Error ? openError.message : 'Unable to open or share attachment.');
     }
   }
 
@@ -350,6 +350,249 @@ export function AriaBotScreen({
       return;
     }
     setClearConfirmVisible(true);
+  };
+
+  const downloadChatAsPdf = async () => {
+    if (downloadLoading) {
+      return;
+    }
+
+    const chatMessages = stripWelcomeMessage(messages);
+
+    if (chatMessages.length === 0) {
+      setError('There are no messages to download.');
+      return;
+    }
+
+    try {
+      setDownloadLoading(true);
+      setError('');
+
+      const now = new Date();
+
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const year = now.getFullYear();
+
+      const formattedDate = `${month}-${day}-${year}`;
+
+      const safeAgentName = agentName.trim().replace(/[^a-zA-Z0-9-_]/g, '_');
+
+      const fileName = `${safeAgentName}_Chat_${formattedDate}.pdf`;
+
+      const escapeHtml = (value: string) =>
+        value
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+
+      const chatHtml = chatMessages
+        .map((message) => {
+          const sender = message.role === 'user' ? 'You' : agentName;
+
+          const messageDate = message.createdAt ? formatChatDate(message.createdAt) : '';
+
+          const attachments = message.attachments?.length
+            ? `
+            <div class="attachments">
+              ${message.attachments
+                .map(
+                  (attachment) => `
+                    <div class="attachment">
+                      📎 ${escapeHtml(attachment.filename || 'Attachment')}
+                    </div>
+                  `,
+                )
+                .join('')}
+            </div>
+          `
+            : '';
+
+          return `
+          <div class="message ${message.role === 'user' ? 'user' : 'aria'}">
+
+            <div class="sender">
+              ${escapeHtml(sender)}
+            </div>
+
+            <div class="message-text">
+              ${escapeHtml(message.text).replace(/\n/g, '<br />')}
+            </div>
+
+            ${attachments}
+
+            ${
+              message.escalationStatus === 'pending'
+                ? `
+                  <div class="status">
+                    I'm checking with the university on this.
+                    I'll let you know.
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              message.escalationStatus === 'resolved'
+                ? `
+                  <div class="resolved">
+                    Answered by the university.
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              messageDate
+                ? `
+                  <div class="date">
+                    ${escapeHtml(messageDate)}
+                  </div>
+                `
+                : ''
+            }
+
+          </div>
+        `;
+        })
+        .join('');
+
+      const html = `
+      <!DOCTYPE html>
+
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+
+          <style>
+            @page {
+              margin: 30px;
+            }
+
+            body {
+              font-family: Arial, sans-serif;
+              padding: 10px;
+              color: #222;
+              background: #fff;
+            }
+
+            h1 {
+              font-size: 24px;
+              margin-bottom: 5px;
+            }
+
+            .subtitle {
+              color: #666;
+              font-size: 13px;
+              margin-bottom: 25px;
+            }
+
+            .message {
+              margin-bottom: 18px;
+              padding: 14px;
+              border-radius: 10px;
+              border: 1px solid #ddd;
+              page-break-inside: avoid;
+            }
+
+            .user {
+              background: #fff1ec;
+            }
+
+            .aria {
+              background: #f5f5fa;
+            }
+
+            .sender {
+              font-weight: bold;
+              font-size: 13px;
+              margin-bottom: 8px;
+            }
+
+            .message-text {
+              font-size: 14px;
+              line-height: 1.6;
+              word-wrap: break-word;
+            }
+
+            .date {
+              margin-top: 10px;
+              font-size: 10px;
+              color: #888;
+            }
+
+            .status {
+              margin-top: 10px;
+              color: #777;
+              font-size: 12px;
+            }
+
+            .resolved {
+              margin-top: 10px;
+              color: #e85d3f;
+              font-weight: bold;
+              font-size: 12px;
+            }
+
+            .attachments {
+              margin-top: 10px;
+            }
+
+            .attachment {
+              font-size: 12px;
+              color: #555;
+              margin-top: 4px;
+            }
+          </style>
+        </head>
+
+        <body>
+
+          <h1>${escapeHtml(agentName)} Chat</h1>
+
+          <div class="subtitle">
+            Chat history exported from the application
+          </div>
+
+          ${chatHtml}
+
+        </body>
+      </html>
+    `;
+
+      const { uri } = await Print.printToFileAsync({
+        html,
+      });
+
+      console.log('[Aria] Temporary PDF:', uri);
+
+      const newUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+      await FileSystem.copyAsync({
+        from: uri,
+        to: newUri,
+      });
+
+      console.log('[Aria] Renamed PDF:', newUri);
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(newUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: `Save ${fileName}`,
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        await Linking.openURL(newUri);
+      }
+    } catch (downloadError) {
+      console.error('[Aria] PDF download failed:', downloadError);
+
+      setError(downloadError instanceof Error ? downloadError.message : 'Unable to download chat as PDF.');
+    } finally {
+      setDownloadLoading(false);
+    }
   };
 
   const closeClearConfirm = () => {
@@ -507,6 +750,11 @@ export function AriaBotScreen({
       setSidebarOpen((current) => !current);
       onHeaderCommandHandled?.();
     }
+
+    if (headerCommand.type === 'download') {
+      void downloadChatAsPdf();
+      onHeaderCommandHandled?.();
+    }
   }, [headerCommand?.id]);
 
   const cancelEditingName = () => {
@@ -551,7 +799,7 @@ export function AriaBotScreen({
       >
         <View style={styles.container}>
           {!sidebarOpen ? (
-            <View style={styles.clearChatButtonWrap}>
+            <View style={styles.chatActionsWrap}>
               <Pressable
                 accessibilityRole="button"
                 disabled={clearLoading || loading || historyLoading}
@@ -615,13 +863,13 @@ export function AriaBotScreen({
                       style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.ariaBubble]}
                     >
                       <Text style={styles.bubbleLabel}>{message.role === 'user' ? 'You' : agentName}</Text>
-                    <FormattedMessageText
-                      text={message.text}
-                      formatBold={message.role === 'aria'}
-                      isUniversityResponse={message.escalationStatus === 'resolved'}
-                      question={message.question}
-                      answer={message.answer}
-                    />
+                      <FormattedMessageText
+                        text={message.text}
+                        formatBold={message.role === 'aria'}
+                        isUniversityResponse={message.escalationStatus === 'resolved'}
+                        question={message.question}
+                        answer={message.answer}
+                      />
                       {message.role === 'aria' && message.escalationStatus === 'pending' ? (
                         <Text style={styles.escalationText}>
                           I'm checking with the university on this. I'll let you know.
@@ -1321,14 +1569,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,107,74,0.14)',
     borderColor: 'rgba(255,107,74,0.32)',
   },
-  clearChatButtonWrap: {
-    alignItems: 'flex-end',
+  chatActionsWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
     width: '100%',
   },
+
   clearChatButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255,107,74,0.14)',
-    borderColor: 'rgba(255,107,74,0.32)',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderColor: 'rgba(255,255,255,0.14)',
     borderRadius: 8,
     borderWidth: 1,
     height: 34,

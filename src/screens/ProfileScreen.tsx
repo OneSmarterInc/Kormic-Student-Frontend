@@ -457,6 +457,7 @@ export function ProfileScreen({
     getRenderableMediaUrl(profile.profile_image_url) ?? '',
   );
   const [profileImageLoading, setProfileImageLoading] = useState(false);
+  const [ariaActionsOpen, setAriaActionsOpen] = useState(false);
   const [resumesLoading, setResumesLoading] = useState(false);
   const [resumeUploadLoading, setResumeUploadLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -845,7 +846,7 @@ export function ProfileScreen({
       return;
     }
 
-    if(!validateProfileDraft()){
+    if (!validateProfileDraft()) {
       setSectionError('Please fill all required profile fields.');
       return;
     }
@@ -1031,23 +1032,59 @@ export function ProfileScreen({
 
             {section === 'aria' ? (
               <View style={styles.topBarActions}>
+                {/* More button */}
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Edit agent name"
-                  onPress={() => sendAriaHeaderCommand('edit')}
-                  style={styles.topBarIconButton}
+                  accessibilityLabel="Aria chat actions"
+                  onPress={() => setAriaActionsOpen((current) => !current)}
+                  style={[styles.topBarIconButton, ariaActionsOpen && styles.topBarIconButtonActive]}
                 >
-                  <MaterialIcons name="edit" size={18} color={colors.offWhite} />
+                  <MaterialIcons name="more-vert" size={22} color={colors.offWhite} />
                 </Pressable>
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Open chat history"
-                  onPress={() => sendAriaHeaderCommand('history')}
-                  style={styles.topBarIconButton}
-                >
-                  <MaterialIcons name="history" size={19} color={colors.offWhite} />
-                </Pressable>
+                {/* Expanded actions */}
+                {ariaActionsOpen ? (
+                  <View style={styles.ariaActionsMenu}>
+                    {/* Edit */}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Edit agent name"
+                      onPress={() => {
+                        setAriaActionsOpen(false);
+                        sendAriaHeaderCommand('edit');
+                      }}
+                      style={styles.topBarIconButton}
+                    >
+                      <MaterialIcons name="edit" size={18} color={colors.offWhite} />
+                    </Pressable>
+
+                    {/* History */}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Open chat history"
+                      onPress={() => {
+                        setAriaActionsOpen(false);
+                        sendAriaHeaderCommand('history');
+                      }}
+                      style={styles.topBarIconButton}
+                    >
+                      <MaterialIcons name="history" size={19} color={colors.offWhite} />
+                    </Pressable>
+
+                    {/* Download PDF */}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Download chat as PDF"
+                      onPress={() => {
+                        setAriaActionsOpen(false);
+                        sendAriaHeaderCommand('download');
+                      }}
+                      style={styles.topBarIconButton}
+                    >
+                      <MaterialIcons name="download" size={19} color={colors.offWhite} />
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
             ) : null}
           </>
@@ -1128,9 +1165,7 @@ export function ProfileScreen({
                 onSecondary={runGithubAnalysis}
               />
 
-              {sectionError ? (
-                <Text style={styles.errorTextMsg}>{sectionError}</Text>
-              ): null}
+              {sectionError ? <Text style={styles.errorTextMsg}>{sectionError}</Text> : null}
 
               <GithubAnalysisDetails
                 loading={githubLoading}
@@ -1639,21 +1674,21 @@ function getExperienceSummary(value: unknown) {
 }
 
 const formatDateTime = (dateString) => {
-  if (!dateString) return "";
+  if (!dateString) return '';
 
-  const date = new Date(dateString.replace(" ", "T"));
+  const date = new Date(dateString.replace(' ', 'T'));
 
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = date.toLocaleString("en-US", { month: "short" });
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = date.toLocaleString('en-US', { month: 'short' });
   const year = date.getFullYear();
 
   let hours = date.getHours();
-  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, '0');
 
-  const ampm = hours >= 12 ? "PM" : "AM";
+  const ampm = hours >= 12 ? 'PM' : 'AM';
 
   hours = hours % 12 || 12;
-  const formattedHours = String(hours).padStart(2, "0");
+  const formattedHours = String(hours).padStart(2, '0');
 
   return `${day} ${month} ${year} - ${formattedHours}:${minutes} ${ampm}`;
 };
@@ -1715,7 +1750,7 @@ function ProfileMenu({
           accessibilityRole="button"
           accessibilityLabel="Log out"
           onPress={onLogout}
-          style={[styles.sidebarItem, styles.sidebarLogoutItem]}
+          style={styles.sidebarItem}
         >
           <Text style={[styles.sidebarItemText, styles.sidebarLogoutText]}>Logout</Text>
         </Pressable>
@@ -3131,6 +3166,31 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 24,
   },
+
+  topBarIconButtonActive: {
+    backgroundColor: 'rgba(255,107,74,0.14)',
+    borderColor: 'rgba(255,107,74,0.32)',
+  },
+  ariaActionsMenu: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    padding: 6,
+    position: 'absolute',
+    right: 42,
+    top: 0,
+    zIndex: 1000,
+
+    elevation: 8,
+
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
   topBarIconButton: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -3196,10 +3256,6 @@ const styles = StyleSheet.create({
   },
   sidebarItemActive: {
     backgroundColor: 'rgba(255,107,74,0.16)',
-  },
-  sidebarLogoutItem: {
-    borderColor: 'rgba(255,143,126,0.25)',
-    borderWidth: 1,
   },
   sidebarItemText: {
     color: colors.textSoft,
@@ -3267,7 +3323,7 @@ const styles = StyleSheet.create({
   editFooter: {
     gap: 24,
     paddingTop: 174,
-    bottom:24,
+    bottom: 24,
   },
   loadingState: {
     alignItems: 'center',
@@ -3304,11 +3360,11 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   errorTextMsg: {
-  color: colors.coral,
-  fontSize: 14,
-  marginTop: 4,
-  marginBottom: 12,
-},
+    color: colors.coral,
+    fontSize: 14,
+    marginTop: 4,
+    marginBottom: 12,
+  },
   header: {
     alignItems: 'center',
     flexDirection: 'row',
