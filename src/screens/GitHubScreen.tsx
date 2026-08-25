@@ -213,7 +213,6 @@ export function GitHubScreen({ state, dispatch, onContinue }: GitHubScreenProps)
   };
 
   const connected = status.connected || state.githubStatus === 'connected';
-  const disabled = loadingStatus || connecting || analyzing || state.githubStatus === 'connecting';
 
   return (
     <ScreenShell
@@ -224,10 +223,9 @@ export function GitHubScreen({ state, dispatch, onContinue }: GitHubScreenProps)
             testID="connect-github-button"
             label={connected ? 'Analyze GitHub' : 'Connect GitHub'}
             onPress={connected ? analyze : connect}
-            disabled={disabled}
             loading={connecting || analyzing}
           />
-          <PrimaryButton label="Skip for now" onPress={() => setSkipVisible(true)} variant="secondary" disabled={disabled} />
+          <PrimaryButton label="Skip for now" onPress={() => setSkipVisible(true)} variant="secondary"/>
         </>
       }
     >

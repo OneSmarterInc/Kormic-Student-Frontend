@@ -9,7 +9,7 @@ import { AuthSession, BasicInfoField, interests, OnboardingState } from '../mode
 import { createStudentProfile, getAccessToken, getRefreshToken, registerStudent } from '../services/api';
 import { OnboardingAction } from '../state/onboardingReducer';
 import { colors, fonts, type } from '../theme/tokens';
-import { validateBasicInfo, BasicInfoErrors } from '../utils/validation';
+import { validateBasicInfo, validatePassword, BasicInfoErrors } from '../utils/validation';
 import { DropdownField } from '../components/DropdownField';
 import { PasswordVisibilityIcon } from '../components/PasswordVisibilityIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -274,8 +274,12 @@ export function BasicInfoScreen({
   const errors = useMemo<RegisterErrors>(() => {
     const nextErrors: RegisterErrors = validateBasicInfo(state.basicInfo);
 
-    if (!isCreatingMissingProfile && !password.trim()) {
-      nextErrors.password = 'Password is required';
+    if (!isCreatingMissingProfile) {
+      const passwordError = validatePassword(password);
+
+      if (passwordError) {
+        nextErrors.password = passwordError;
+      }
     }
 
     if (apiError) {
@@ -407,8 +411,12 @@ export function BasicInfoScreen({
           label="Phone number"
           required
           value={state.basicInfo.phone}
-          onChangeText={update('phone')}
+          onChangeText={(text) => {
+            const digitsOnly = text.replace(/\D/g, '').slice(0, 10);
+            update('phone')(digitsOnly);
+          }}
           keyboardType="phone-pad"
+          maxLength={10}
           error={shownErrors.phone}
         />
 

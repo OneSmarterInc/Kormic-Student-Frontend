@@ -18,7 +18,9 @@ const requiredFields: Array<keyof BasicInfo> = [
 ];
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const phonePattern = /^\+?[0-9][0-9\s().-]{6,19}$/;
+const passwordPattern =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
+const phonePattern = /^[0-9]{10}$/;
 const graduationYearPattern = /\b(19|20)\d{2}\b/;
 
 const labels: Record<keyof BasicInfo, string> = {
@@ -58,7 +60,7 @@ export function validateBasicInfo(info: BasicInfo): BasicInfoErrors {
   }
 
   if (info.phone.trim() && !phonePattern.test(info.phone.trim())) {
-    errors.phone = 'Enter a valid phone number';
+    errors.phone = 'Enter a valid 10-digit phone number';
   }
 
   if (info.expectedGraduation.trim() && !parseGraduationYear(info.expectedGraduation)) {
@@ -70,6 +72,34 @@ export function validateBasicInfo(info: BasicInfo): BasicInfoErrors {
   }
 
   return errors;
+}
+
+export function validatePassword(password: string): string | undefined {
+  if (!password.trim()) {
+    return 'Password is required';
+  }
+
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters';
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    return 'Password must contain at least one uppercase letter';
+  }
+
+  if (!/[a-z]/.test(password)) {
+    return 'Password must contain at least one lowercase letter';
+  }
+
+  if (!/\d/.test(password)) {
+    return 'Password must contain at least one number';
+  }
+
+  if (!/[!@#$%^&*()_+\-=[\]{};\'":\\|,.<>/?]/.test(password)) {
+    return 'Password must contain at least one special character';
+  }
+
+  return undefined;
 }
 
 export function parseGraduationYear(value: string): number | null {
