@@ -120,7 +120,7 @@ export function LoginScreen({ dispatch, onContinue, onSignUp, onForgotPassword }
   return (
     <>
       <ScreenShell
-        footer={<PrimaryButton label="Sign in" onPress={submit} disabled={!canContinue} loading={loading} />}
+        footer={<PrimaryButton label="Sign in" onPress={submit} loading={loading} />}
       >
         <View style={styles.content}>
           <Text style={styles.title}>Welcome back</Text>

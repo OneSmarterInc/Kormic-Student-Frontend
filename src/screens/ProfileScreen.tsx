@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -19,6 +19,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { AriaBotScreen, AriaHeaderCommand } from './AriaBotScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { Linking } from 'react-native';
 import * as IntentLauncher from 'expo-intent-launcher';
 import {
   API_BASE_URL,
@@ -27,6 +28,8 @@ import {
   deleteResume,
   downloadResumeFile,
   getGithubHistory,
+  getGithubStatus,
+  getGithubConnectUrl,
   getLinkedInImage,
   getProfileImage,
   GithubAnalysisResponse,
@@ -453,6 +456,9 @@ export function ProfileScreen({
   const [githubAnalysis, setGithubAnalysis] = useState<GithubAnalysisResponse | undefined>();
   const [githubHistory, setGithubHistory] = useState<GithubHistoryResponse['analyses']>([]);
   const [githubLoading, setGithubLoading] = useState(false);
+  const [githubConnected, setGithubConnected] = useState(false);
+  const [message, setMessage] = useState('');
+
   const [profileImageUrl, setProfileImageUrl] = useState(
     getRenderableMediaUrl(profile.profile_image_url) ?? '',
   );
@@ -482,9 +488,42 @@ export function ProfileScreen({
     budget: formatDraftValue(profile.budget),
   });
 
+  
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const pollGithubStatusAfterOAuth = useCallback(async () => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const nextStatus = await getGithubStatus(session);
+        if (nextStatus.connected) {
+          setGithubConnected(true);
+          setMessage('GitHub connected successfully. You can now analyze it.');
+        }
+      } catch (error) {
+        console.log('Polling attempt failed:', error);
+      }
+      await wait(2000);
+    }
+    setMessage('If GitHub says connected, refresh the page or tap Connect again to update status.');
+  }, [session]);
+
   useEffect(() => {
     onAriaSectionActiveChange?.(section === 'aria');
   }, [onAriaSectionActiveChange, section]);
+
+  useEffect(() => {
+    const checkGithubStatus = async () => {
+      if (!session) return;
+
+      try {
+        const status = await getGithubStatus(session);
+        setGithubConnected(status.connected);
+      } catch (error) {
+        console.log('GitHub status error:', error);
+      }
+    };
+    checkGithubStatus();
+  }, [session]);
 
   useEffect(() => {
     setLinkedinUrl(profile.linkedin_url ?? '');
@@ -955,10 +994,14 @@ export function ProfileScreen({
     try {
       setActionLoading(true);
       setSectionError('');
+      setMessage('');
+
       const result = await analyzeGithub(session);
       setGithubAnalysis(result);
       await loadGithubHistory();
       await onProfileChanged?.();
+
+      setMessage('GitHub analysis completed successfully.');
     } catch (githubError) {
       setSectionError(githubError instanceof Error ? githubError.message : 'Unable to analyze GitHub');
     } finally {
@@ -1006,6 +1049,48 @@ export function ProfileScreen({
       </ScreenShell>
     );
   }
+
+  const handleConnectGitHub = async () => {
+    if (!session) {
+      setSectionError('Please sign in again to connect GitHub.');
+      return;
+    }
+
+    setMessage('');
+    setSectionError('');
+
+    try {
+      setGithubLoading(true);
+      const data = await getGithubConnectUrl(session);
+
+      if (!data.authorize_url) {
+        throw new Error('The server did not return a GitHub authorization URL.');
+      }
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.open === 'function') {
+        const popup = window.open(data.authorize_url, '_blank');
+
+        if (!popup) {
+          setMessage('GitHub opened in a new browser tab. Complete authorization there, then return here.');
+          await Linking.openURL(data.authorize_url);
+        } else {
+          popup.focus();
+          setMessage('Complete GitHub authorization in the new tab, then return here.');
+        }
+
+        pollGithubStatusAfterOAuth();
+        return;
+      }
+
+      await Linking.openURL(data.authorize_url);
+      setMessage('Complete GitHub authorization in the browser, then return here.');
+      pollGithubStatusAfterOAuth();
+    } catch (error) {
+      setSectionError(error instanceof Error ? error.message : 'Unable to start GitHub OAuth.');
+    } finally {
+      setGithubLoading(false);
+    }
+  };
 
   const confirmLogout = () => {
     setLogoutConfirmVisible(false);
@@ -1146,33 +1231,51 @@ export function ProfileScreen({
 
           {section === 'github' ? (
             <View style={styles.form}>
-              <SourceEditor
-                title="GitHub"
-                description={
-                  profile.github
-                    ? 'Run a fresh analysis on your connected GitHub account.'
-                    : 'Connect GitHub with OAuth before running analysis.'
-                }
-                value=""
-                onChange={() => undefined}
-                primaryLabel="Save"
-                secondaryLabel="Analyze GitHub"
-                showUrlField={false}
-                showPrimaryAction={false}
-                disabled={actionLoading}
-                error={sectionError}
-                onPrimary={() => undefined}
-                onSecondary={runGithubAnalysis}
-              />
-
-              {sectionError ? <Text style={styles.errorTextMsg}>{sectionError}</Text> : null}
-
-              <GithubAnalysisDetails
-                loading={githubLoading}
-                currentAnalysis={githubAnalysis}
-                history={githubHistory}
-                onRefresh={loadGithubHistory}
-              />
+              {!githubConnected ? (
+                <View style={styles.connectGithubCard}>
+                  <Text style={styles.connectGithubTitle}>Connect GitHub Account</Text>
+                  <Text style={styles.sectionIntro}>
+                    Connect your GitHub account to analyze your repositories and technical skills.
+                  </Text>
+                  {message ? <Text style={styles.successText}>{message}</Text> : null}
+                  {sectionError ? <Text style={styles.errorTextMsg}>{sectionError}</Text> : null}
+                  <PrimaryButton
+                    label={githubLoading ? 'Connecting...' : 'Connect GitHub'}
+                    onPress={handleConnectGitHub}
+                    loading={githubLoading}
+                    disabled={githubLoading}
+                  />
+                </View>
+              ) : (
+                <>
+                  <SourceEditor
+                    title="GitHub"
+                    description={
+                      profile.github
+                        ? 'Run a fresh analysis on your connected GitHub account.'
+                        : 'Your GitHub account is connected. Run analysis to get insights.'
+                    }
+                    value=""
+                    onChange={() => undefined}
+                    primaryLabel="Save"
+                    secondaryLabel="Analyze GitHub"
+                    showUrlField={false}
+                    showPrimaryAction={false}
+                    disabled={actionLoading}
+                    error={sectionError}
+                    onPrimary={() => undefined}
+                    onSecondary={runGithubAnalysis}
+                  />
+                  {message ? <Text style={styles.successText}>{message}</Text> : null}
+                  {sectionError ? <Text style={styles.errorTextMsg}>{sectionError}</Text> : null}
+                  <GithubAnalysisDetails
+                    loading={githubLoading}
+                    currentAnalysis={githubAnalysis}
+                    history={githubHistory}
+                    onRefresh={loadGithubHistory}
+                  />
+                </>
+              )}
             </View>
           ) : null}
 
@@ -2180,7 +2283,6 @@ function GithubAnalysisDetails({
       <View style={styles.linkedinHistoryHeader}>
         <View style={styles.linkedinHistoryTitleWrap}>
           <Text style={styles.cardTitle}>GitHub details</Text>
-          <Text style={styles.metaText}>Latest connected-account analysis and history.</Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -3563,6 +3665,27 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 13,
     lineHeight: 19,
+  },
+  successText: {
+    color: colors.connectionBlue,
+    fontFamily: fonts.body,
+    fontSize: 14,
+    marginVertical: 8,
+  },
+  connectGithubCard: {
+    backgroundColor: 'rgba(91,141,239,0.10)',
+    borderColor: 'rgba(91,141,239,0.22)',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 20,
+    marginBottom: 10,
+  },
+  connectGithubTitle: {
+    color: colors.offWhite,
+    fontFamily: fonts.heading,
+    fontSize: 20,
+    lineHeight: 26,
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.045)',
