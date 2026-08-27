@@ -12,10 +12,10 @@ let expoPushToken: string | undefined;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
+    shouldShowAlert: false, 
+    shouldShowBanner: false, 
+    shouldShowList: false, 
+    shouldPlaySound: false, 
     shouldSetBadge: false,
   }),
 });
