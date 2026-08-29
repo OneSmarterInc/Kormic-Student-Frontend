@@ -463,10 +463,14 @@ export function ProfileScreen({
     getRenderableMediaUrl(profile.profile_image_url) ?? '',
   );
   const [profileImageLoading, setProfileImageLoading] = useState(false);
+  const [replaceImageLoading, setReplaceImageLoading] = useState(false);
+  const [deleteImageLoading, setDeleteImageLoading] = useState(false);
   const [ariaActionsOpen, setAriaActionsOpen] = useState(false);
   const [resumesLoading, setResumesLoading] = useState(false);
   const [resumeUploadLoading, setResumeUploadLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [viewLoadingId, setViewLoadingId] = useState<string | number | null>(null);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | number | null>(null);
   const [sectionError, setSectionError] = useState('');
   const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({});
   const [linkedinUrl, setLinkedinUrl] = useState(profile.linkedin_url ?? '');
@@ -488,7 +492,6 @@ export function ProfileScreen({
     budget: formatDraftValue(profile.budget),
   });
 
-  
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const pollGithubStatusAfterOAuth = useCallback(async () => {
@@ -738,7 +741,7 @@ export function ProfileScreen({
     }
 
     try {
-      setActionLoading(true);
+      setViewLoadingId(resume.id);
       setSectionError('');
 
       const filename = (resume.original_filename || `resume-${resume.id}.pdf`).replace(
@@ -816,7 +819,7 @@ export function ProfileScreen({
     } catch (downloadError) {
       setSectionError(downloadError instanceof Error ? downloadError.message : 'Unable to open resume');
     } finally {
-      setActionLoading(false);
+      setViewLoadingId(null);
     }
   };
 
@@ -827,7 +830,7 @@ export function ProfileScreen({
     }
 
     try {
-      setActionLoading(true);
+      setDeleteLoadingId(resumeId);
       setSectionError('');
       await deleteResume(session, resumeId);
       await loadResumes();
@@ -835,7 +838,7 @@ export function ProfileScreen({
     } catch (deleteError) {
       setSectionError(deleteError instanceof Error ? deleteError.message : 'Unable to delete resume');
     } finally {
-      setActionLoading(false);
+      setDeleteLoadingId(null);
     }
   };
 
@@ -853,7 +856,7 @@ export function ProfileScreen({
     } catch (saveError) {
       setSectionError(saveError instanceof Error ? saveError.message : 'Unable to update profile');
     } finally {
-      setActionLoading(false);
+      setDeleteLoadingId(null);
     }
   };
 
@@ -940,8 +943,12 @@ export function ProfileScreen({
     }
 
     try {
-      setActionLoading(true);
+      setReplaceImageLoading(true);
       setSectionError('');
+
+      console.log('Session access token exists:', !!session.access);
+      console.log('Student ID:', session.user?.student_id);
+
       const [image] = await services.linkedin.pickScreenshots(0);
       if (!image) {
         throw new Error('Choose a profile image before uploading.');
@@ -952,17 +959,19 @@ export function ProfileScreen({
         getRenderableMediaUrl(image.uri) ?? getRenderableMediaUrl(response.profile_image_url);
 
       if (previewUrl) {
-        setProfileImageUrl(previewUrl);
+        setProfileImageUrl(`${previewUrl}?t=${Date.now()}`);
       }
 
       await onProfileChanged?.({
         ...profile,
         profile_image_url: response.profile_image_url ?? profile.profile_image_url,
       });
+
+      await loadProfileImage();
     } catch (imageError) {
       setSectionError(imageError instanceof Error ? imageError.message : 'Unable to upload profile image');
     } finally {
-      setActionLoading(false);
+      setReplaceImageLoading(false);
     }
   };
 
@@ -973,7 +982,7 @@ export function ProfileScreen({
     }
 
     try {
-      setActionLoading(true);
+      setDeleteImageLoading(true);
       setSectionError('');
       await deleteProfileImage(session);
       setProfileImageUrl('');
@@ -981,7 +990,7 @@ export function ProfileScreen({
     } catch (imageError) {
       setSectionError(imageError instanceof Error ? imageError.message : 'Unable to delete profile image');
     } finally {
-      setActionLoading(false);
+      setDeleteImageLoading(false);
     }
   };
 
@@ -1204,7 +1213,8 @@ export function ProfileScreen({
             <ResumeManager
               resumes={resumes}
               loading={resumesLoading}
-              actionLoading={actionLoading}
+              viewLoadingId={viewLoadingId}
+              deleteLoadingId={deleteLoadingId}
               uploadLoading={resumeUploadLoading}
               error={sectionError}
               onUpload={uploadNewResume}
@@ -1219,6 +1229,8 @@ export function ProfileScreen({
               draft={profileDraft}
               imageUrl={profileImageUrl}
               imageLoading={profileImageLoading}
+              replaceImageLoading={replaceImageLoading}
+              deleteImageLoading={deleteImageLoading}
               loading={actionLoading}
               error={sectionError}
               fieldErrors={profileFieldErrors}
@@ -1867,6 +1879,8 @@ function EditProfileForm({
   imageUrl,
   imageLoading,
   loading,
+  replaceImageLoading,
+  deleteImageLoading,
   error,
   onChange,
   onReplaceImage,
@@ -1893,6 +1907,8 @@ function EditProfileForm({
   };
   imageUrl: string;
   imageLoading: boolean;
+  replaceImageLoading: boolean;
+  deleteImageLoading: boolean;
   loading: boolean;
   error: string;
   fieldErrors: Record<string, string>;
@@ -1927,16 +1943,14 @@ function EditProfileForm({
             <PrimaryButton
               label={imageUrl ? 'Replace image' : 'Upload image'}
               onPress={onReplaceImage}
-              loading={loading}
-              disabled={loading}
+              loading={replaceImageLoading}
             />
             {imageUrl ? (
               <PrimaryButton
                 label="Delete image"
                 onPress={onRemoveImage}
                 variant="secondary"
-                loading={loading}
-                disabled={loading}
+                loading={deleteImageLoading}
               />
             ) : null}
           </View>
@@ -2064,7 +2078,8 @@ function EditProfileForm({
 function ResumeManager({
   resumes,
   loading,
-  actionLoading,
+  viewLoadingId,
+  deleteLoadingId,
   uploadLoading,
   error,
   onUpload,
@@ -2074,7 +2089,8 @@ function ResumeManager({
 }: {
   resumes: ResumeRecord[];
   loading: boolean;
-  actionLoading: boolean;
+  viewLoadingId: string | number | null;
+  deleteLoadingId: string | number | null;
   uploadLoading: boolean;
   error: string;
   onUpload: () => void;
@@ -2112,7 +2128,7 @@ function ResumeManager({
           label="Refresh resumes"
           onPress={onRefresh}
           variant="secondary"
-          disabled={loading || actionLoading}
+          disabled={loading || uploadLoading}
           loading={loading}
         />
       </View>
@@ -2135,23 +2151,28 @@ function ResumeManager({
           <View style={styles.actionRow}>
             <Pressable
               accessibilityRole="button"
-              disabled={actionLoading}
+              disabled={viewLoadingId !== null || deleteLoadingId !== null}
               onPress={() => onDownload(resume)}
-              style={[styles.smallButton, actionLoading && styles.disabledButton]}
+              style={[styles.smallButton, viewLoadingId === resume.id && styles.disabledButton]}
             >
-              {actionLoading ? (
+              {viewLoadingId === resume.id ? (
                 <ActivityIndicator color={colors.offWhite} />
               ) : (
                 <Text style={styles.smallButtonText}>View</Text>
               )}
             </Pressable>
+
             <Pressable
               accessibilityRole="button"
-              disabled={actionLoading}
+              disabled={viewLoadingId !== null || deleteLoadingId !== null}
               onPress={() => onDelete(resume.id)}
-              style={[styles.smallButton, styles.dangerButton, actionLoading && styles.disabledButton]}
+              style={[
+                styles.smallButton,
+                styles.dangerButton,
+                deleteLoadingId === resume.id && styles.disabledButton,
+              ]}
             >
-              {actionLoading ? (
+              {deleteLoadingId === resume.id ? (
                 <ActivityIndicator color={colors.error} />
               ) : (
                 <Text style={[styles.smallButtonText, styles.dangerButtonText]}>Delete</Text>
