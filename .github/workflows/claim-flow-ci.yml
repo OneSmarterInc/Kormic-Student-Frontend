@@ -1,0 +1,48 @@
+name: Claim flow CI
+
+on:
+  push:
+    branches:
+      - fix/institute-claim-token-flow
+  pull_request:
+    paths:
+      - "index.js"
+      - "src/services/**"
+      - "__tests__/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/claim-flow-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  student-app-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      EXPO_PUBLIC_API_BASE_URL: https://backend.kormic.ai/api
+      CI: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run complete Jest suite
+        run: npm test
