@@ -96,7 +96,10 @@ function normalizedFetchInput(input: FetchInput): FetchInput {
     return normalizedUrl;
   }
   if (typeof URL !== 'undefined' && input instanceof URL) {
-    return new URL(normalizedUrl);
+    // React Native's fetch typing accepts RequestInfo rather than URL even
+    // though the runtime accepts URL objects. Returning the normalized
+    // string is portable across native, web, and the TypeScript contract.
+    return normalizedUrl;
   }
   if (typeof Request !== 'undefined' && input instanceof Request) {
     return new Request(normalizedUrl, input);
