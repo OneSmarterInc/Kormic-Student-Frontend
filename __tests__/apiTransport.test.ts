@@ -3,6 +3,76 @@ import {
   normalizeKormicApiUrl,
 } from '../src/services/apiTransport';
 
+class TestHeaders {
+  private readonly values = new Map<string, string>();
+
+  constructor(init?: HeadersInit) {
+    if (!init) {
+      return;
+    }
+    if (Array.isArray(init)) {
+      init.forEach(([key, value]) => this.values.set(key.toLowerCase(), value));
+      return;
+    }
+    if (typeof Headers !== 'undefined' && init instanceof Headers) {
+      init.forEach((value, key) => this.values.set(key.toLowerCase(), value));
+      return;
+    }
+    Object.entries(init).forEach(([key, value]) => this.values.set(key.toLowerCase(), String(value)));
+  }
+
+  get(name: string) {
+    return this.values.get(name.toLowerCase()) ?? null;
+  }
+}
+
+class TestResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  readonly headers: TestHeaders;
+
+  constructor(
+    private readonly bodyText: string,
+    init: ResponseInit = {},
+  ) {
+    this.status = init.status ?? 200;
+    this.ok = this.status >= 200 && this.status < 300;
+    this.headers = new TestHeaders(init.headers);
+  }
+
+  async text() {
+    return this.bodyText;
+  }
+
+  async json() {
+    return JSON.parse(this.bodyText) as unknown;
+  }
+}
+
+const nativeResponse = globalThis.Response;
+
+beforeAll(() => {
+  if (typeof globalThis.Response === 'undefined') {
+    Object.defineProperty(globalThis, 'Response', {
+      configurable: true,
+      writable: true,
+      value: TestResponse as unknown as typeof Response,
+    });
+  }
+});
+
+afterAll(() => {
+  if (nativeResponse) {
+    Object.defineProperty(globalThis, 'Response', {
+      configurable: true,
+      writable: true,
+      value: nativeResponse,
+    });
+  } else {
+    Reflect.deleteProperty(globalThis, 'Response');
+  }
+});
+
 describe('Kormic API transport', () => {
   it('adds the canonical api prefix when an environment base omits it', () => {
     expect(normalizeKormicApiUrl('https://backend.kormic.ai/claim/start/')).toBe(
