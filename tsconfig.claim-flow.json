@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/services/apiTransport.ts",
+    "__tests__/apiTransport.test.ts"
+  ]
+}

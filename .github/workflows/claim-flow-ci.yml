@@ -1,0 +1,66 @@
+name: Claim flow CI
+
+on:
+  push:
+    branches:
+      - fix/institute-claim-token-flow
+  pull_request:
+    paths:
+      - "index.js"
+      - "jest.setup.ts"
+      - "src/services/**"
+      - "__tests__/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - ".github/workflows/claim-flow-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  student-app-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      EXPO_PUBLIC_API_BASE_URL: https://backend.kormic.ai/api
+      CI: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Strict type-check for claim transport
+        run: npx tsc --noEmit -p tsconfig.claim-flow.json
+
+      - name: Lint claim transport and tests
+        run: npx eslint src/services/apiTransport.ts __tests__/apiTransport.test.ts jest.setup.ts
+
+      - name: Run claim transport regression tests
+        run: npm test -- __tests__/apiTransport.test.ts
+
+      # The current main branch has unrelated onboarding/skip-profile Jest
+      # failures, application-wide lint debt, and two ProfileScreen type
+      # diagnostics. Report those complete baselines without allowing them to
+      # hide regressions in this isolated claim transport repair.
+      - name: Report complete Jest baseline
+        continue-on-error: true
+        run: npm test
+
+      - name: Report full-project lint baseline
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Report full-project type-check baseline
+        continue-on-error: true
+        run: npm run typecheck
