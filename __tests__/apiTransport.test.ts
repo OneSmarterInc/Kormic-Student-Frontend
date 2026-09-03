@@ -3,6 +3,8 @@ import {
   normalizeKormicApiUrl,
 } from '../src/services/apiTransport';
 
+const KORMIC_API_BASE_URL = 'https://backend.kormic.ai/api';
+
 class TestHeaders {
   private readonly values = new Map<string, string>();
 
@@ -75,27 +77,38 @@ afterAll(() => {
 
 describe('Kormic API transport', () => {
   it('adds the canonical api prefix when an environment base omits it', () => {
-    expect(normalizeKormicApiUrl('https://backend.kormic.ai/claim/start/')).toBe(
-      'https://backend.kormic.ai/api/claim/start/',
-    );
-    expect(normalizeKormicApiUrl('http://127.0.0.1:8030/profile/')).toBe(
-      'http://127.0.0.1:8030/api/profile/',
-    );
+    expect(
+      normalizeKormicApiUrl('https://backend.kormic.ai/claim/start/', KORMIC_API_BASE_URL),
+    ).toBe('https://backend.kormic.ai/api/claim/start/');
+    expect(
+      normalizeKormicApiUrl('http://127.0.0.1:8030/profile/', 'http://127.0.0.1:8030'),
+    ).toBe('http://127.0.0.1:8030/api/profile/');
   });
 
   it('keeps canonical URLs stable and removes a duplicated api segment', () => {
-    expect(normalizeKormicApiUrl('https://backend.kormic.ai/api/claim/verify/')).toBe(
-      'https://backend.kormic.ai/api/claim/verify/',
-    );
-    expect(normalizeKormicApiUrl('https://backend.kormic.ai/api/api/claim/confirm/')).toBe(
-      'https://backend.kormic.ai/api/claim/confirm/',
-    );
+    expect(
+      normalizeKormicApiUrl(
+        'https://backend.kormic.ai/api/claim/verify/',
+        KORMIC_API_BASE_URL,
+      ),
+    ).toBe('https://backend.kormic.ai/api/claim/verify/');
+    expect(
+      normalizeKormicApiUrl(
+        'https://backend.kormic.ai/api/api/claim/confirm/',
+        KORMIC_API_BASE_URL,
+      ),
+    ).toBe('https://backend.kormic.ai/api/claim/confirm/');
   });
 
   it('preserves query strings and fragments while normalizing relative paths', () => {
-    expect(normalizeKormicApiUrl('/claim/start/?source=invite#token')).toBe(
-      '/api/claim/start/?source=invite#token',
-    );
+    expect(
+      normalizeKormicApiUrl('/claim/start/?source=invite#token', KORMIC_API_BASE_URL),
+    ).toBe('/api/claim/start/?source=invite#token');
+  });
+
+  it('does not rewrite an API-looking path on a third-party origin', () => {
+    const thirdPartyUrl = 'https://github.com/profile/example';
+    expect(normalizeKormicApiUrl(thirdPartyUrl, KORMIC_API_BASE_URL)).toBe(thirdPartyUrl);
   });
 
   it('passes JSON API responses through unchanged', async () => {
@@ -104,7 +117,7 @@ describe('Kormic API transport', () => {
       headers: { 'Content-Type': 'application/json' },
     });
     const fetchImplementation = jest.fn(async () => originalResponse);
-    const guardedFetch = createKormicApiFetch(fetchImplementation);
+    const guardedFetch = createKormicApiFetch(fetchImplementation, KORMIC_API_BASE_URL);
 
     const response = await guardedFetch('https://backend.kormic.ai/claim/start/', {
       method: 'POST',
@@ -124,7 +137,7 @@ describe('Kormic API transport', () => {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       }),
     );
-    const guardedFetch = createKormicApiFetch(fetchImplementation);
+    const guardedFetch = createKormicApiFetch(fetchImplementation, KORMIC_API_BASE_URL);
 
     const response = await guardedFetch('https://backend.kormic.ai/api/claim/start/', {
       method: 'POST',
@@ -137,14 +150,14 @@ describe('Kormic API transport', () => {
     expect(payload.error).not.toContain('<html>');
   });
 
-  it('treats an HTML 200 page as a gateway/configuration failure', async () => {
+  it('treats an HTML 200 page from the Kormic origin as a gateway/configuration failure', async () => {
     const fetchImplementation = jest.fn(async () =>
       new Response('<!doctype html><html></html>', {
         status: 200,
         headers: { 'Content-Type': 'text/html' },
       }),
     );
-    const guardedFetch = createKormicApiFetch(fetchImplementation);
+    const guardedFetch = createKormicApiFetch(fetchImplementation, KORMIC_API_BASE_URL);
 
     const response = await guardedFetch('https://backend.kormic.ai/claim/start/');
     const payload = (await response.json()) as { error?: string };
@@ -152,5 +165,20 @@ describe('Kormic API transport', () => {
     expect(response.status).toBe(502);
     expect(payload.error).toContain('API address returned a web page');
     expect(payload.error).toContain('/api/claim/start/');
+  });
+
+  it('leaves third-party requests and HTML responses untouched', async () => {
+    const originalResponse = new Response('<html><body>GitHub profile</body></html>', {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' },
+    });
+    const fetchImplementation = jest.fn(async () => originalResponse);
+    const guardedFetch = createKormicApiFetch(fetchImplementation, KORMIC_API_BASE_URL);
+    const thirdPartyUrl = 'https://github.com/profile/example';
+
+    const response = await guardedFetch(thirdPartyUrl);
+
+    expect(fetchImplementation).toHaveBeenCalledWith(thirdPartyUrl, undefined);
+    expect(response).toBe(originalResponse);
   });
 });
