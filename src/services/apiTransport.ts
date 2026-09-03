@@ -1,6 +1,10 @@
+declare const process: { env?: Record<string, string | undefined> } | undefined;
+
 type FetchInput = Parameters<typeof fetch>[0];
 type FetchInit = Parameters<typeof fetch>[1];
 type FetchImplementation = (input: FetchInput, init?: FetchInit) => Promise<Response>;
+
+const DEFAULT_KORMIC_API_BASE_URL = 'https://backend.kormic.ai/api';
 
 const API_ROUTE_PREFIXES = [
   '/auth/',
@@ -19,8 +23,35 @@ const API_ROUTE_PREFIXES = [
   '/institute-lists/',
 ] as const;
 
+function configuredApiBaseUrl() {
+  const configured =
+    typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL?.trim() : undefined;
+  return configured || DEFAULT_KORMIC_API_BASE_URL;
+}
+
 function isAbsoluteUrl(value: string) {
   return /^[a-z][a-z\d+.-]*:\/\//i.test(value);
+}
+
+function apiOrigin(apiBaseUrl: string) {
+  try {
+    return new URL(apiBaseUrl).origin;
+  } catch {
+    return '';
+  }
+}
+
+function belongsToConfiguredApiOrigin(value: string, apiBaseUrl: string) {
+  if (!isAbsoluteUrl(value)) {
+    return true;
+  }
+
+  try {
+    const configuredOrigin = apiOrigin(apiBaseUrl);
+    return Boolean(configuredOrigin) && new URL(value).origin === configuredOrigin;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeApiPath(pathname: string) {
@@ -46,13 +77,17 @@ function normalizeApiPath(pathname: string) {
 }
 
 /**
- * Normalize a Kormic request URL so a base URL with or without `/api`
- * reaches the canonical Django API. This specifically protects local and
- * older builds that otherwise POST to `/claim/start/` and receive an HTML
- * 404 page from the web server.
+ * Normalize a Kormic request URL so a configured base URL with or without
+ * `/api` reaches the canonical Django API. Absolute URLs are changed only
+ * when they belong to the configured Kormic API origin; the app also uses
+ * global fetch for third-party services and those requests must remain
+ * untouched.
  */
-export function normalizeKormicApiUrl(value: string) {
-  if (!value) {
+export function normalizeKormicApiUrl(
+  value: string,
+  apiBaseUrl: string = configuredApiBaseUrl(),
+) {
+  if (!value || !belongsToConfiguredApiOrigin(value, apiBaseUrl)) {
     return value;
   }
 
@@ -85,9 +120,9 @@ function requestUrl(input: FetchInput) {
   return '';
 }
 
-function normalizedFetchInput(input: FetchInput): FetchInput {
+function normalizedFetchInput(input: FetchInput, apiBaseUrl: string): FetchInput {
   const currentUrl = requestUrl(input);
-  const normalizedUrl = normalizeKormicApiUrl(currentUrl);
+  const normalizedUrl = normalizeKormicApiUrl(currentUrl, apiBaseUrl);
 
   if (!currentUrl || normalizedUrl === currentUrl) {
     return input;
@@ -107,8 +142,8 @@ function normalizedFetchInput(input: FetchInput): FetchInput {
   return input;
 }
 
-function isKormicApiRequest(value: string) {
-  if (!value) {
+function isKormicApiRequest(value: string, apiBaseUrl: string) {
+  if (!value || !belongsToConfiguredApiOrigin(value, apiBaseUrl)) {
     return false;
   }
 
@@ -151,16 +186,20 @@ function htmlResponseAsJson(response: Response, url: string) {
 /**
  * Central defensive transport wrapper for the existing fetch-based API
  * client. It preserves normal JSON responses, but converts an HTML proxy,
- * routing, or Django error page into the JSON error envelope expected by the
- * app instead of allowing `JSON.parse` to expose "Unexpected character: <".
+ * routing, or Django error page from the configured Kormic API into the JSON
+ * error envelope expected by the app instead of exposing
+ * "Unexpected character: <". Third-party fetches are never rewritten.
  */
-export function createKormicApiFetch(fetchImplementation: FetchImplementation): FetchImplementation {
+export function createKormicApiFetch(
+  fetchImplementation: FetchImplementation,
+  apiBaseUrl: string = configuredApiBaseUrl(),
+): FetchImplementation {
   return async (input, init) => {
-    const nextInput = normalizedFetchInput(input);
+    const nextInput = normalizedFetchInput(input, apiBaseUrl);
     const normalizedUrl = requestUrl(nextInput);
     const response = await fetchImplementation(nextInput, init);
 
-    if (isKormicApiRequest(normalizedUrl) && isHtmlResponse(response)) {
+    if (isKormicApiRequest(normalizedUrl, apiBaseUrl) && isHtmlResponse(response)) {
       return htmlResponseAsJson(response, normalizedUrl);
     }
 
@@ -170,12 +209,12 @@ export function createKormicApiFetch(fetchImplementation: FetchImplementation): 
 
 let installed = false;
 
-export function installKormicApiTransport() {
+export function installKormicApiTransport(apiBaseUrl: string = configuredApiBaseUrl()) {
   if (installed || typeof globalThis.fetch !== 'function') {
     return;
   }
 
   const originalFetch = globalThis.fetch.bind(globalThis) as FetchImplementation;
-  globalThis.fetch = createKormicApiFetch(originalFetch) as typeof fetch;
+  globalThis.fetch = createKormicApiFetch(originalFetch, apiBaseUrl) as typeof fetch;
   installed = true;
 }
