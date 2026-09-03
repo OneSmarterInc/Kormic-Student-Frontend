@@ -294,7 +294,14 @@ async function parseJson<T>(response: Response): Promise<T | undefined> {
     return undefined;
   }
 
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // Reverse proxies and framework error handlers can return HTML for a
+    // failed API request. Keep that implementation detail out of the UI and
+    // let the caller surface its useful operation-specific fallback message.
+    return undefined;
+  }
 }
 
 function getApiError(data: ApiErrorBody | undefined, fallback: string) {
