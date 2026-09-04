@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Image, Linking, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import {
   Fraunces_600SemiBold,
   Fraunces_600SemiBold_Italic,
@@ -186,19 +186,7 @@ function isTotpEnrollmentError(message: string) {
 }
 
 function isAuthRoute(route: OnboardingRoute) {
-  return (
-  route === 'Welcome' ||
-  route === 'Login' ||
-  route === 'ForgotPassword' ||
-  route === 'ResetOtp' ||
-  route === 'ResetPassword' ||
-  route === 'ClaimLanding' ||
-  route === 'ClaimCode' ||
-  route === 'ClaimReview' ||
-  route === 'ClaimPassword' ||
-  route === 'BasicInfo' ||
-  route === 'SecuritySetup'
-);
+  return route !== 'Profile' && route !== 'AgentLive' && route !== 'BotScreen';
 }
 
 function hidesBotLauncher(route: OnboardingRoute) {
@@ -250,7 +238,8 @@ export default function App() {
   }, [botReturnRoute, navigate, state.route]);
 
   const closeBotScreen = useCallback(() => {
-    navigate(botReturnRoute);
+    const targetRoute = isAuthRoute(botReturnRoute) ? 'Profile' : botReturnRoute;
+    navigate(targetRoute);
   }, [botReturnRoute, navigate]);
   const next = useCallback(() => {
     const routedStep = getNextRouteAfterStep(state.route, state.authSession);
@@ -552,6 +541,40 @@ export default function App() {
     setProfileLoading(false);
     dispatch({ type: 'LOGOUT' });
   }, [state.authSession]);
+
+  const handleBack = useCallback(() => {
+    if (state.route === 'BotScreen') {
+      if (isAuthRoute(botReturnRoute)) {
+        return false; // Exit app directly! Do not show Welcome/Login page!
+      }
+      closeBotScreen();
+      return true;
+    }
+
+    if (isAuthRoute(state.route)) {
+      return false; // Exit app directly!
+    }
+
+    const validHistory = (state.history ?? []).filter((r) => !isAuthRoute(r));
+
+    if (validHistory.length === 0 && (state.route === 'Profile' || state.route === 'AgentLive')) {
+      return false; // Exit app directly!
+    }
+
+    if (validHistory.length > 0) {
+      back();
+      return true;
+    }
+
+    return false;
+  }, [back, botReturnRoute, closeBotScreen, state.history, state.route]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBack);
+    return () => {
+      subscription.remove();
+    };
+  }, [handleBack]);
 
   useEffect(() => {
     return addNotificationReceivedListener(() => {

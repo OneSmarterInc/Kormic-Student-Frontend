@@ -94,6 +94,7 @@ export interface SelectedCvFile {
 
 export interface OnboardingState {
   route: OnboardingRoute;
+  history?: OnboardingRoute[];
   basicInfo: BasicInfo;
   authSession?: AuthSession;
   livenessStatus: LivenessStatus;
@@ -141,6 +142,7 @@ export const initialBasicInfo: BasicInfo = {
 
 export const initialOnboardingState: OnboardingState = {
   route: 'Welcome',
+  history: [],
   basicInfo: initialBasicInfo,
   livenessStatus: 'intro',
   githubStatus: 'not_started',

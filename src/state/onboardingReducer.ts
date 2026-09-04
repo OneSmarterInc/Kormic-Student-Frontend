@@ -42,9 +42,20 @@ export function onboardingReducer(
   action: OnboardingAction,
 ): OnboardingState {
   switch (action.type) {
-    case 'NAVIGATE':
-      return { ...state, route: action.route };
+    case 'NAVIGATE': {
+      if (state.route === action.route) return state;
+      const history = [...(state.history ?? [])];
+      if (history.length === 0 || history[history.length - 1] !== state.route) {
+        history.push(state.route);
+      }
+      return { ...state, route: action.route, history };
+    }
     case 'BACK': {
+      const history = [...(state.history ?? [])];
+      if (history.length > 0) {
+        const previousRoute = history.pop()!;
+        return { ...state, route: previousRoute, history };
+      }
       const previous = getPreviousRoute(state.route);
       return previous ? { ...state, route: previous } : state;
     }
@@ -61,9 +72,9 @@ export function onboardingReducer(
         },
       };
     case 'SET_AUTH_SESSION':
-      return { ...state, authSession: action.session };
+      return { ...state, authSession: action.session, history: [] };
     case 'LOGOUT':
-      return initialOnboardingState;
+      return { ...initialOnboardingState, history: [] };
     case 'TOGGLE_INTEREST': {
       const exists = state.basicInfo.interests.includes(action.interest);
       return {

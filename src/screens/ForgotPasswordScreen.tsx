@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     marginBottom: 54,
   },
   footerLink: {
-    color: colors.muted,
+    color: colors.textSoft,
     fontFamily: fonts.bodyMedium,
     fontSize: 14,
     textAlign: 'center',

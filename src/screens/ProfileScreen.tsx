@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   Pressable,
   StyleSheet,
@@ -441,7 +442,8 @@ export function ProfileScreen({
   const technicalIntelligence = profile.technical_intelligence ?? {};
   const researchIntelligence = profile.research_intelligence ?? {};
   const skills = profile.technical_skills?.length ? profile.technical_skills : profile.skills;
-  const [section, setSection] = useState<ProfileSection>('aria');
+  const [section, setSectionState] = useState<ProfileSection>('aria');
+  const [sectionHistory, setSectionHistory] = useState<ProfileSection[]>([]);
   const [agentName, setAgentName] = useState('Aria');
   const [ariaHeaderCommand, setAriaHeaderCommand] = useState<AriaHeaderCommand | undefined>();
   const sendAriaHeaderCommand = (type: AriaHeaderCommand['type']) => {
@@ -495,6 +497,7 @@ export function ProfileScreen({
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const pollGithubStatusAfterOAuth = useCallback(async () => {
+    if (!session) return;
     for (let attempt = 0; attempt < 20; attempt += 1) {
       try {
         const nextStatus = await getGithubStatus(session);
@@ -709,10 +712,41 @@ export function ProfileScreen({
   }, [section, session?.access, session?.user?.student_id]);
 
   const selectSection = (nextSection: ProfileSection) => {
-    setSection(nextSection);
+    if (section !== nextSection) {
+      setSectionHistory((prev) => [...prev, section]);
+      setSectionState(nextSection);
+    }
     setMenuOpen(false);
     setSectionError('');
   };
+
+  const goBackSection = useCallback(() => {
+    if (sectionHistory.length > 0) {
+      const prevSection = sectionHistory[sectionHistory.length - 1];
+      setSectionHistory((prev) => prev.slice(0, prev.length - 1));
+      if (prevSection) {
+        setSectionState(prevSection);
+      }
+      return true;
+    }
+
+    if (section !== 'aria') {
+      setSectionState('aria');
+      return true;
+    }
+
+    return false;
+  }, [section, sectionHistory]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      return goBackSection();
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [goBackSection]);
 
   const uploadNewResume = async () => {
     if (!session || !services) {
@@ -928,7 +962,7 @@ export function ProfileScreen({
           },
         }),
       );
-      setSection('overview');
+      selectSection('overview');
     } catch (saveError) {
       setSectionError(saveError instanceof Error ? saveError.message : 'Unable to update profile');
     } finally {
@@ -1525,6 +1559,7 @@ function ProfileAvatar({
   loading?: boolean;
   large?: boolean;
 }) {
+  const 
   const normalizedUrl = getRenderableMediaUrl(imageUrl);
   const imageSource = normalizedUrl
     ? {
@@ -1788,7 +1823,7 @@ function getExperienceSummary(value: unknown) {
     .join('; ');
 }
 
-const formatDateTime = (dateString) => {
+const formatDateTime = (dateString?: string) => {
   if (!dateString) return '';
 
   const date = new Date(dateString.replace(' ', 'T'));
