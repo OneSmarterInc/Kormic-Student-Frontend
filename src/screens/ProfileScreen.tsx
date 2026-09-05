@@ -1559,8 +1559,11 @@ function ProfileAvatar({
   loading?: boolean;
   large?: boolean;
 }) {
-  const 
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+
   const normalizedUrl = getRenderableMediaUrl(imageUrl);
+
   const imageSource = normalizedUrl
     ? {
         uri: normalizedUrl,
@@ -1570,19 +1573,109 @@ function ProfileAvatar({
       }
     : undefined;
 
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setZoom(1);
+  };
+
   return (
-    <View style={[styles.avatar, large && styles.avatarLarge]}>
-      {imageSource ? (
-        <Image source={imageSource} style={styles.avatarImage} resizeMode="cover" />
-      ) : (
-        <Text style={styles.avatarText}>{getInitials(name)}</Text>
-      )}
-      {loading ? (
-        <View style={styles.avatarLoading}>
-          <ActivityIndicator color={colors.coral} size="small" />
+    <>
+      <Pressable
+        accessibilityRole={imageSource ? 'imagebutton' : undefined}
+        accessibilityLabel={imageSource ? `Open ${name}'s profile image` : undefined}
+        disabled={!imageSource}
+        onPress={() => setPreviewOpen(true)}
+        style={[styles.avatar, large && styles.avatarLarge]}
+      >
+        {imageSource ? (
+          <Image
+            source={imageSource}
+            style={styles.avatarImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={styles.avatarText}>{getInitials(name)}</Text>
+        )}
+
+        {loading ? (
+          <View style={styles.avatarLoading}>
+            <ActivityIndicator color={colors.coral} size="small" />
+          </View>
+        ) : null}
+      </Pressable>
+
+      {/* Full-screen image preview */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={previewOpen}
+        onRequestClose={closePreview}
+      >
+        <View style={styles.linkedinPreviewOverlay}>
+          {/* Close button */}
+          <Pressable
+            onPress={closePreview}
+            style={styles.linkedinPreviewClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close image preview"
+          >
+            <Text style={styles.linkedinPreviewCloseText}>×</Text>
+          </Pressable>
+
+          {/* Zoom controls */}
+          <View style={styles.linkedinZoomActions}>
+            <Pressable
+              onPress={() =>
+                setZoom((value) => Math.max(1, value - 0.5))
+              }
+              style={styles.linkedinZoomButton}
+            >
+              <Text style={styles.linkedinZoomText}>−</Text>
+            </Pressable>
+
+            <Text style={styles.linkedinZoomValue}>
+              {Math.round(zoom * 100)}%
+            </Text>
+
+            <Pressable
+              onPress={() =>
+                setZoom((value) => Math.min(4, value + 0.5))
+              }
+              style={styles.linkedinZoomButton}
+            >
+              <Text style={styles.linkedinZoomText}>+</Text>
+            </Pressable>
+          </View>
+
+          {/* Zoomable image */}
+          {imageSource ? (
+            <ScrollView
+              style={styles.linkedinZoomScroll}
+              contentContainerStyle={styles.linkedinZoomVerticalContent}
+              showsVerticalScrollIndicator
+            >
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator
+                contentContainerStyle={styles.linkedinZoomHorizontalContent}
+              >
+                <Image
+                  source={imageSource}
+                  style={[
+                    styles.linkedinPreviewImage,
+                    {
+                      width: 320 * zoom,
+                      height: 320 * zoom,
+                    },
+                  ]}
+                  resizeMode="contain"
+                />
+              </ScrollView>
+            </ScrollView>
+          ) : null}
         </View>
-      ) : null}
-    </View>
+      </Modal>
+    </>
   );
 }
 
